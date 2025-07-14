@@ -174,7 +174,7 @@ class EnhancedDMPDatabaseManager:
             try:
                 return float(value)
             except (ValueError, TypeError):
-            return None
+                return None
     
         def safe_int(value):
             """安全地將值轉換為整數"""
@@ -684,10 +684,10 @@ class EnhancedDMPDatabaseManager:
                     if idx % 100 == 0:
                         logger.info(f"   進度: {idx}/{len(conversions)} ({len(successful_ids)} 成功, {failed_count} 失敗)")
                         
-                    except Exception as e:
+                except Exception as e:
                     failed_count += 1
                     logger.error(f"❌ 插入第{idx}條轉化數據失敗: {str(e)}")
-                        continue
+                    continue
                 
             success_rate = (len(successful_ids) / len(conversions)) * 100 if conversions else 0
             logger.info(f"✅ 批量插入完成: {len(successful_ids)}/{len(conversions)} 條記錄成功 ({success_rate:.1f}%)")
@@ -811,7 +811,7 @@ class EnhancedDMPDatabaseManager:
                     'query_info': {
                         'platform_filter': platform_name,
                         'partner_filter': partner_name,
-                    'days_ago': days_ago,
+                        'days_ago': days_ago,
                         'query_time': datetime.now().isoformat()
                     },
                     'basic_stats': dict(basic_stats) if basic_stats else {},
@@ -837,8 +837,8 @@ class EnhancedDMPDatabaseManager:
     
     async def health_check(self) -> Dict[str, Any]:
         """健康檢查 - 增強版本"""
-            if not self.pool:
-                await self.init_pool()
+        if not self.pool:
+            await self.init_pool()
             
         try:
             async with self.pool.acquire() as conn:
