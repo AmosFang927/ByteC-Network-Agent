@@ -1,20 +1,63 @@
-# Python
+# Python缓存
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# 分布式包
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 虚拟环境
 venv/
-.venv/
 env/
-.env
+ENV/
+env.bak/
+venv.bak/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# OS
+# 日志文件
+*.log
+logs/
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 缓存和临时文件
+cache/
+temp/
+tmp/
+.cache/
+.tmp/
+
+# 输出文件
+output/
+charts/
+
+# 系统文件
 .DS_Store
 .DS_Store?
 ._*
@@ -23,41 +66,47 @@ env/
 ehthumbs.db
 Thumbs.db
 
-# Output files (可选 - 如果不想提交输出文件)
-output/*.xlsx
-output/*.json
-output/*.html
+# 配置文件（包含敏感信息）
+*.env
+*.env.local
+*.env.production
+config.local.*
 
-# Temporary files
-temp/
-*.tmp
-*.log
+# 测试相关
+.coverage
+.pytest_cache/
+.tox/
+.coverage.*
+htmlcov/
+.nyc_output
 
-# Sensitive configuration (如果有敏感信息)
-.env.local
-.env.production
-secrets/
+# 文档构建
+docs/_build/
+site/
 
-# Test outputs
-test_output/
-individual_test_output/ 
+# 运行时文件
+*.pid
+*.seed
+*.pid.lock
 
-# Cloud SQL Migration - Sensitive Files
-postback_system/cloud_sql_config_secure.env
-postback_system/ssl_certs/
-postback_system/cloud-sql-proxy
+# 备份文件
+*.backup
+*.bak
+*.orig
+
+# 证书文件
 *.pem
 *.key
 *.crt
+*.p12
+*.jks
 
-# Migration Data Files (potentially sensitive)
-complete_migration_data.json
-migration_data.json
-postback_system/complete_migration_data.json
+# Docker相关
+.dockerignore
 
-# Database CLI Tools (may contain credentials)
-postback_system/db_cli.py
-postback_system/db_cli_docker.py
-
-# Supabase config (may contain credentials)
-postback_system/supabase/ 
+# 特定项目文件
+cloud-sql-proxy*
+pandasai_deployment_info.txt
+enhanced_dashboard_deployment_info.txt
+rector_monitor_server.pid
+last_rector_count.txt
