@@ -42,6 +42,11 @@ class DatabaseManager:
             logger.error(f"数据库连接失败: {e}")
             raise
     
+    async def init_pool(self):
+        """初始化数据库连接池（兼容性方法）"""
+        # 这个方法用于兼容性，实际连接在get_connection方法中处理
+        logger.info("✅ DatabaseManager 初始化完成")
+        
     async def test_connection(self) -> bool:
         """测试数据库连接"""
         try:
@@ -387,7 +392,7 @@ class DatabaseManager:
     # 产品级别数据
     # =============================================================================
     
-    async def get_offer_performance(self, start_date: str, end_date: str, partner_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    async def get_offer_performance(self, start_date: str, end_date: str, partner_id: Optional[int] = None, offer_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """获取产品级别表现数据"""
         try:
             conn = await self.get_connection()
@@ -401,6 +406,10 @@ class DatabaseManager:
             if partner_id:
                 where_conditions.append(f"partner_id = ${len(params) + 1}")
                 params.append(partner_id)
+            
+            if offer_name:
+                where_conditions.append(f"offer_name = ${len(params) + 1}")
+                params.append(offer_name)
             
             query = f"""
                 SELECT 
@@ -718,7 +727,7 @@ class DatabaseManager:
     
     async def get_enhanced_detailed_conversions(self, start_date: str, end_date: str, partner_name: Optional[str] = None, 
                                           page: int = 1, limit: int = 100) -> Dict[str, Any]:
-        """获取增强版详细转化数据 - 使用新的数据库字段结构"""
+        """获取增强版详细转化数据 - 仅返回用户要求的字段"""
         try:
             conn = await self.get_connection()
             
@@ -745,7 +754,7 @@ class DatabaseManager:
             stats_query = f"""
                 SELECT 
                     COUNT(*) as total_conversions,
-                    COALESCE(SUM(COALESCE(sale_amount, 0)), 0) as total_sale_amount,
+                    COALESCE(SUM(COALESCE(usd_sale_amount, 0)), 0) as total_sale_amount,
                     COALESCE(AVG(COALESCE(commission_rate, 0)), 0) as avg_commission_rate
                 FROM conversions
                 WHERE {' AND '.join(where_conditions)}
@@ -756,77 +765,22 @@ class DatabaseManager:
             total_sale_amount = float(stats_row['total_sale_amount']) if stats_row and stats_row['total_sale_amount'] else 0
             avg_commission_rate = float(stats_row['avg_commission_rate']) if stats_row and stats_row['avg_commission_rate'] else 0
             
-            # 获取详细数据 - 包含所有45个字段，使用COALESCE处理NULL值
+            # 获取详细数据 - 严格限制为11个核心字段
             data_query = f"""
                 SELECT 
-                    -- 基础标识字段
-                    COALESCE(id, 0) as "ID",
-                    COALESCE(conversion_id, '') as "Conversion ID",
-                    COALESCE(tenant_id, 0) as "Tenant ID",
-                    
-                    -- 核心分类字段
-                    COALESCE(platform, '') as "Platform",
-                    COALESCE(partner, '') as "Partner", 
-                    COALESCE(source, '') as "Source",
-                    
-                    -- 时间字段
-                    datetime_conversion as "Conversion Time",
-                    click_time as "Click Time",
-                    event_time as "Event Time",
-                    datetime_conversion_updated as "Conversion Updated",
-                    created_at as "Created At",
-                    updated_at as "Updated At",
-                    
-                    -- 订单和产品信息
-                    COALESCE(order_id, '') as "Order ID",
-                    COALESCE(offer_id, '') as "Offer ID", 
-                    COALESCE(offer_name, '') as "Offer Name",
-                    COALESCE(merchant_id, '') as "Merchant ID",
-                    
-                    -- 金额字段 - 使用COALESCE确保不为NULL
-                    COALESCE(sale_amount, 0) as "Sale Amount",
-                    COALESCE(payout, 0) as "Payout",
-                    COALESCE(base_payout, 0) as "Base Payout",
-                    COALESCE(bonus_payout, 0) as "Bonus Payout",
-                    COALESCE(sale_amount_local, 0) as "Sale Amount Local",
-                    COALESCE(payout_local, 0) as "Payout Local",
-                    COALESCE(usd_sale_amount, 0) as "USD Sale Amount",
-                    COALESCE(usd_payout, 0) as "USD Payout",
-                    COALESCE(myr_sale_amount, 0) as "MYR Sale Amount",
-                    COALESCE(myr_payout, 0) as "MYR Payout",
-                    
-                    -- 货币字段
-                    COALESCE(currency, '') as "Currency",
-                    COALESCE(conversion_currency, '') as "Conversion Currency",
-                    
-                    -- 佣金字段
-                    COALESCE(commission_rate, 0) as "Commission Rate",
-                    COALESCE(avg_commission_rate, 0) as "Avg Commission Rate",
-                    
-                    -- 发布商参数字段
-                    COALESCE(aff_sub, '') as "Aff Sub",
-                    COALESCE(aff_sub1, '') as "Aff Sub 1",
-                    COALESCE(aff_sub2, '') as "Aff Sub 2", 
-                    COALESCE(aff_sub3, '') as "Aff Sub 3",
-                    COALESCE(aff_sub4, '') as "Aff Sub 4",
-                    COALESCE(aff_sub5, '') as "Aff Sub 5",
-                    
-                    -- 广告商参数字段
-                    COALESCE(adv_sub, '') as "Adv Sub",
-                    COALESCE(adv_sub1, '') as "Adv Sub 1",
-                    COALESCE(adv_sub2, '') as "Adv Sub 2",
-                    COALESCE(adv_sub3, '') as "Adv Sub 3", 
-                    COALESCE(adv_sub4, '') as "Adv Sub 4",
-                    COALESCE(adv_sub5, '') as "Adv Sub 5",
-                    
-                    -- 状态字段
-                    COALESCE(conversion_status, '') as "Conversion Status",
-                    COALESCE(offer_status, '') as "Offer Status",
-                    
-                    -- 其他业务字段
-                    COALESCE(click_id, '') as "Click ID",
-                    COALESCE(affiliate_remarks, '') as "Affiliate Remarks"
-                    
+                    -- 11个核心字段 (Essential Fields View)
+                    COALESCE(platform, '') as "platform",
+                    COALESCE(partner, '') as "partner",
+                    COALESCE(source, '') as "source",
+                    COALESCE(conversion_id, '') as "conversion_id",
+                    datetime_conversion as "datetime_conversion",
+                    COALESCE(offer_name, '') as "offer_name",
+                    COALESCE(usd_sale_amount, 0) as "usd_sale_amount",
+                    COALESCE(usd_payout, 0) as "usd_payout",
+                    COALESCE(aff_sub, '') as "sub_id",
+                    COALESCE(aff_sub, '') as "media_id",
+                    COALESCE(click_id, '') as "click_id"
+                    -- 注意：deliberately excluding all other fields for performance
                 FROM conversions
                 WHERE {' AND '.join(where_conditions)}
                 ORDER BY datetime_conversion DESC

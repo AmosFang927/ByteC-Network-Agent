@@ -1,0 +1,41 @@
+# 公司財務AI助手 - 依賴文件
+# Company Finance AI Assistant - Dependencies
+
+# 核心框架
+flask>=2.3.0
+flask-cors>=4.0.0
+streamlit>=1.28.0
+
+# 數據處理
+pandas>=2.0.0
+numpy>=1.24.0
+
+# 數據可視化
+plotly>=5.15.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# HTTP請求
+requests>=2.31.0
+aiohttp>=3.8.0
+
+# 數據庫
+asyncpg>=0.28.0
+psycopg2-binary>=2.9.0
+
+# AI/ML
+openai>=1.0.0
+google-cloud-aiplatform>=1.43.0
+vertexai>=1.43.0
+
+# 實用工具
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+typing-extensions>=4.7.0
+
+# 日期時間
+python-dateutil>=2.8.2
+
+# 其他
+pathlib2>=2.3.7
+dataclasses>=0.8; python_version < '3.7' 

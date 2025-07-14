@@ -1,0 +1,43 @@
+# 公司財務AI助手 - 依賴項
+# Company Finance AI Assistant - Dependencies
+
+# Web 框架
+Flask>=2.3.0
+Flask-CORS>=4.0.0
+
+# 異步HTTP客戶端
+aiohttp>=3.8.0
+
+# 數據庫
+asyncpg>=0.28.0
+SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
+# 數據處理
+pandas>=2.0.0
+numpy>=1.24.0
+
+# 日期時間處理
+python-dateutil>=2.8.0
+
+# HTTP請求
+requests>=2.31.0
+
+# 環境變量管理
+python-dotenv>=1.0.0
+
+# 日志和調試
+colorlog>=6.7.0
+
+# 開發工具
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# 可選：AI/ML功能（如果需要更高級的NLP）
+# openai>=1.0.0
+# transformers>=4.30.0
+# torch>=2.0.0
+
+# 可選：更多數據庫支持
+# mysql-connector-python>=8.0.0
+# pymongo>=4.0.0 
