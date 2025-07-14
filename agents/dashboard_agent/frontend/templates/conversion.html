@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-table me-2"></i>Conversion Report
+        </h1>
+        <p class="text-muted">View comprehensive details of all conversion records from DMP-agent & Google SQL</p>
+    </div>
+</div>
+
+<!-- 重点统计信息卡片 -->
+<div class="row mb-4" id="statsCards">
+    <div class="col-md-4">
+        <div class="card border-primary">
+            <div class="card-body text-center">
+                <h3 class="text-primary mb-1" id="totalConversions">-</h3>
+                <p class="text-muted mb-0"><i class="fas fa-chart-line me-1"></i>Total Conversions</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-success">
+            <div class="card-body text-center">
+                <h3 class="text-success mb-1" id="totalSaleAmount">-</h3>
+                <p class="text-muted mb-0"><i class="fas fa-dollar-sign me-1"></i>Total Sale Amount</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-warning">
+            <div class="card-body text-center">
+                <h3 class="text-warning mb-1" id="avgCommissionRate">-</h3>
+                <p class="text-muted mb-0"><i class="fas fa-percentage me-1"></i>Avg. Commission Rate</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 过滤器区域 -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label for="date_range" class="form-label">日期範圍</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
+                    <input type="text" class="form-control" id="date_range" readonly
+                           style="background-color: white; cursor: pointer;">
+                </div>
+                <input type="hidden" id="start_date">
+                <input type="hidden" id="end_date">
+            </div>
+            <div class="col-md-4">
+                <label for="partner_select" class="form-label">Partner</label>
+                <select class="form-select" id="partner_select">
+                    <option value="">All Partners</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary" onclick="loadData()">
+                        <i class="fas fa-search me-1"></i>Filter
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="exportReport()">
+                        <i class="fas fa-download me-1"></i>導出報告
+                    </button>
+                    <button type="button" class="btn btn-info" onclick="refreshData()">
+                        <i class="fas fa-sync me-1"></i>刷新
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 数据表格 -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Detailed Conversion Records (All Fields)</h5>
+        <div class="d-flex align-items-center gap-3">
+            <small class="text-muted" id="dataInfo">Loading...</small>
+            <div class="d-flex align-items-center gap-2">
+                <label for="limitSelect" class="form-label mb-0 small">每页:</label>
+                <select class="form-select form-select-sm" id="limitSelect" style="width: auto;">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                </select>
+            </div>
+        </div>
+            </div>
+    <div class="card-body p-0">
+        <!-- 加载状态 -->
+        <div id="loadingState" class="text-center py-5">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-muted">正在加载数据...</p>
+            <div class="progress mx-auto" style="width: 300px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" 
+                     style="width: 0%" id="loadingProgress"></div>
+            </div>
+            <small class="text-muted mt-2" id="loadingStatus">初始化中...</small>
+        </div>
+        
+        <!-- 错误状态 -->
+        <div id="errorState" class="text-center py-5 d-none">
+            <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+            <h5 class="text-danger">数据加载失败</h5>
+            <p class="text-muted" id="errorMessage">请稍后重试</p>
+            <button class="btn btn-outline-primary" onclick="loadData()">重新加载</button>
+    </div>
+        
+        <!-- 无数据状态 -->
+        <div id="noDataState" class="text-center py-5 d-none">
+            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">No conversion data found</h5>
+            <p class="text-muted">Try adjusting your date range or partner filter.</p>
+</div>
+        
+        <!-- 数据表格容器 - 支持水平滚动 -->
+        <div id="tableContainer" class="d-none" style="overflow-x: auto; max-height: 80vh; overflow-y: auto;">
+            <table class="table table-striped table-hover mb-0" id="dataTable" style="min-width: 3000px;">
+                <thead class="table-dark sticky-top">
+                    <tr id="tableHeaders">
+                        <!-- 动态生成表头 -->
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <!-- 动态生成表格内容 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- 分页控制 -->
+    <div class="card-footer" id="paginationContainer" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <small class="text-muted" id="paginationInfo">-</small>
+            </div>
+            <nav aria-label="Page navigation">
+                <ul class="pagination pagination-sm mb-0" id="pagination">
+                    <!-- 动态生成分页 -->
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<!-- 数据源信息 -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Enhanced Data Source:</strong> This data uses the new enhanced database schema with 45+ fields including platform, partner, source, and all API parameters. Data is filtered by datetime_conversion field and partner field.
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 全局变量
+let currentPage = 1;
+let currentLimit = 100;
+let currentStartDate = '';
+let currentEndDate = '';
+let currentPartnerName = '';
+let totalPages = 0;
+
+// 禁用dashboard.js的自动初始化
+window.Dashboard = null;
+
+// 页面初始化
+$(document).ready(function() {
+    initializeDatePicker();
+    setDefaultDates(); // 先設置默認日期
+    loadPartners();
+    loadData(); // 然後加載數據
+    
+    // 限制数量变更事件
+    $('#limitSelect').change(function() {
+        currentLimit = parseInt($(this).val());
+        currentPage = 1;
+        loadData();
+    });
+});
+
+// 初始化日期选择器
+function initializeDatePicker() {
+    $('#date_range').daterangepicker({
+        startDate: moment().subtract(6, 'days'),
+        endDate: moment(),
+        opens: 'left',
+        locale: {
+            format: 'YYYY-MM-DD',
+            separator: ' 至 ',
+            applyLabel: '確定',
+            cancelLabel: '取消',
+            fromLabel: '從',
+            toLabel: '到',
+            customRangeLabel: '自定義範圍',
+            weekLabel: 'W',
+            daysOfWeek: ['日', '一', '二', '三', '四', '五', '六'],
+            monthNames: ['一月', '二月', '三月', '四月', '五月', '六月',
+                        '七月', '八月', '九月', '十月', '十一月', '十二月']
+        },
+        ranges: {
+           '今天': [moment(), moment()],
+           '昨天': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+           '最近7天': [moment().subtract(6, 'days'), moment()],
+           '最近30天': [moment().subtract(29, 'days'), moment()],
+           '這個月': [moment().startOf('month'), moment().endOf('month')],
+           '上個月': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+        }
+    }, function(start, end, label) {
+        updateDateRange(start, end);
+    });
+}
+
+// 设置默认日期
+function setDefaultDates() {
+    const start = moment().subtract(6, 'days');
+    const end = moment();
+    updateDateRange(start, end);
+}
+
+// 更新日期范围
+function updateDateRange(start, end) {
+    currentStartDate = start.format('YYYY-MM-DD');
+    currentEndDate = end.format('YYYY-MM-DD');
+    $('#start_date').val(currentStartDate);
+    $('#end_date').val(currentEndDate);
+    $('#date_range').val(currentStartDate + ' 至 ' + currentEndDate);
+}
+
+// 加载合作伙伴列表
+async function loadPartners() {
+    try {
+        const response = await fetch('/api/enhanced/filters');
+        const result = await response.json();
+        
+        if (result.status === 'success' && result.data.partners) {
+            const select = $('#partner_select');
+            select.empty();
+            
+            result.data.partners.forEach(partner => {
+                select.append(`<option value="${partner.partner_name}">${partner.partner_name} (${partner.conversion_count})</option>`);
+            });
+        }
+    } catch (error) {
+        console.error('加载合作伙伴列表失败:', error);
+    }
+}
+
+// 加载数据
+async function loadData() {
+        showLoadingState();
+    updateLoadingProgress(10, '正在连接数据库...');
+    
+    try {
+        currentPartnerName = $('#partner_select').val();
+        
+        const params = new URLSearchParams({
+            start_date: currentStartDate,
+            end_date: currentEndDate,
+            page: currentPage,
+            limit: currentLimit
+        });
+        
+        if (currentPartnerName && currentPartnerName !== 'All Partners') {
+            params.append('partner_name', currentPartnerName);
+        }
+        
+        updateLoadingProgress(30, '正在查询转换数据...');
+        
+        const response = await fetch(`/api/enhanced/conversion-report?${params}`);
+        updateLoadingProgress(60, '正在处理数据...');
+        
+        const result = await response.json();
+        updateLoadingProgress(80, '正在渲染界面...');
+        
+        if (result.status === 'success') {
+            displayData(result.data);
+            updateStats(result.stats);
+            updatePagination(result.pagination);
+            updateDataInfo(result);
+            updateLoadingProgress(100, '加载完成');
+        } else {
+            showErrorState(result.message || '数据加载失败');
+        }
+    } catch (error) {
+        console.error('加载数据失败:', error);
+        showErrorState('网络错误，请检查连接');
+    }
+}
+
+// 更新加载进度
+function updateLoadingProgress(percent, status) {
+    $('#loadingProgress').css('width', percent + '%');
+    $('#loadingStatus').text(status);
+}
+
+// 显示数据
+function displayData(data) {
+    if (!data.records || data.records.length === 0) {
+        showNoDataState();
+        return;
+    }
+    
+    // 生成表头
+    const headers = Object.keys(data.records[0]);
+    const headerRow = headers.map(header => 
+        `<th style="min-width: 150px; white-space: nowrap;">${header}</th>`
+    ).join('');
+    $('#tableHeaders').html(headerRow);
+    
+    // 生成表格内容
+    const tbody = data.records.map(record => {
+        const cells = headers.map(header => {
+            let value = record[header];
+            
+            // 格式化不同类型的数据
+            if (value === null || value === undefined) {
+                value = '-';
+            } else if (typeof value === 'number' && (header.includes('Amount') || header.includes('Payout') || header.includes('Rate'))) {
+                value = parseFloat(value).toFixed(2);
+                if (header.includes('Amount') || header.includes('Payout')) {
+                    value = '$' + value;
+                } else if (header.includes('Rate')) {
+                    value = value + '%';
+                }
+            } else if (header.includes('Time') && value) {
+                value = moment(value).format('YYYY-MM-DD HH:mm:ss');
+            }
+            
+            return `<td style="white-space: nowrap;">${value}</td>`;
+        }).join('');
+        
+        return `<tr>${cells}</tr>`;
+    }).join('');
+    
+    $('#tableBody').html(tbody);
+    showTableState();
+}
+
+// 更新统计信息
+function updateStats(stats) {
+    $('#totalConversions').text(stats.total_conversions.toLocaleString());
+    $('#totalSaleAmount').text('$' + parseFloat(stats.total_sale_amount).toLocaleString('en-US', {minimumFractionDigits: 2}));
+    $('#avgCommissionRate').text(parseFloat(stats.avg_commission_rate).toFixed(2) + '%');
+}
+
+// 更新分页
+function updatePagination(pagination) {
+    currentPage = pagination.page;
+    totalPages = pagination.pages;
+    
+    $('#paginationInfo').text(`第 ${pagination.page} 页，共 ${pagination.pages} 页 (总计 ${pagination.total.toLocaleString()} 条记录)`);
+    
+    if (pagination.pages <= 1) {
+        $('#paginationContainer').hide();
+        return;
+    }
+    
+    $('#paginationContainer').show();
+    
+    let paginationHtml = '';
+    
+    // 上一页
+    if (currentPage > 1) {
+        paginationHtml += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${currentPage - 1})">上一页</a></li>`;
+    }
+    
+    // 页码
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+    
+    if (startPage > 1) {
+        paginationHtml += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(1)">1</a></li>`;
+        if (startPage > 2) {
+            paginationHtml += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        paginationHtml += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+            <a class="page-link" href="#" onclick="changePage(${i})">${i}</a>
+        </li>`;
+    }
+    
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            paginationHtml += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+        paginationHtml += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${totalPages})">${totalPages}</a></li>`;
+    }
+    
+    // 下一页
+    if (currentPage < totalPages) {
+        paginationHtml += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${currentPage + 1})">下一页</a></li>`;
+    }
+    
+    $('#pagination').html(paginationHtml);
+}
+
+// 更新数据信息
+function updateDataInfo(result) {
+    const info = `数据期间: ${currentStartDate} 至 ${currentEndDate} | Partner: ${currentPartnerName || 'All'} | 显示 ${result.data.records.length} 条记录`;
+    $('#dataInfo').text(info);
+}
+
+// 切换页面
+function changePage(page) {
+    if (page !== currentPage && page >= 1 && page <= totalPages) {
+        currentPage = page;
+        loadData();
+    }
+}
+
+// 刷新数据
+function refreshData() {
+    currentPage = 1;
+    loadData();
+}
+
+// 显示状态管理
+function showLoadingState() {
+    updateLoadingProgress(0, '初始化中...');
+    $('#loadingState').removeClass('d-none');
+    $('#errorState').addClass('d-none');
+    $('#noDataState').addClass('d-none');
+    $('#tableContainer').addClass('d-none');
+    $('#paginationContainer').hide();
+}
+
+function showErrorState(message) {
+    $('#errorMessage').text(message);
+    $('#loadingState').addClass('d-none');
+    $('#errorState').removeClass('d-none');
+    $('#noDataState').addClass('d-none');
+    $('#tableContainer').addClass('d-none');
+    $('#paginationContainer').hide();
+}
+
+function showNoDataState() {
+    $('#loadingState').addClass('d-none');
+    $('#errorState').addClass('d-none');
+    $('#noDataState').removeClass('d-none');
+    $('#tableContainer').addClass('d-none');
+    $('#paginationContainer').hide();
+}
+
+function showTableState() {
+    $('#loadingState').addClass('d-none');
+    $('#errorState').addClass('d-none');
+    $('#noDataState').addClass('d-none');
+    $('#tableContainer').removeClass('d-none');
+}
+
+// 导出报告功能
+function exportReport() {
+    if (!currentStartDate || !currentEndDate) {
+        alert('請選擇日期範圍');
+        return;
+    }
+    
+    const partnerName = currentPartnerName || 'ALL';
+    
+    fetch('/api/export-report', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            start_date: currentStartDate,
+            end_date: currentEndDate,
+            partner_name: partnerName
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`報告生成成功！\n\n詳情：\n- Partner: ${data.partner_name}\n- 日期範圍: ${data.start_date} 至 ${data.end_date}\n- 總記錄數: ${data.total_records}\n- 總金額: $${data.total_amount}\n\n文件已生成並上傳到飛書`);
+        } else {
+            alert(`報告生成失敗：${data.error}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('生成報告時發生錯誤，請檢查控制台日誌');
+    });
+}
+
+// 设置当前页面为活动状态
+document.addEventListener('DOMContentLoaded', function() {
+    const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
+    navLinks.forEach(link => link.classList.remove('active'));
+    
+    const conversionLink = document.querySelector('a[href="/conversion"]');
+    if (conversionLink) {
+        conversionLink.classList.add('active');
+    }
+});
+</script>
+{% endblock %} 

@@ -346,7 +346,7 @@ class InvolveAsiaAPI:
         # 重试次数用完，返回失败
         return None, False
     
-    def get_conversions(self, start_date, end_date, currency=None, api_name=None):
+    def get_conversions(self, start_date, end_date, currency=None, api_name=None, limit=None):
         """获取指定日期范围的所有conversion数据 - 增强版"""
         if not self.token:
             print_step("数据获取失败", "没有有效的认证token")
@@ -354,7 +354,8 @@ class InvolveAsiaAPI:
         
         currency = currency or config.PREFERRED_CURRENCY
         api_label = f"[{api_name}] " if api_name else ""
-        print_step("数据获取", f"{api_label}正在获取转换数据 ({start_date} 到 {end_date})")
+        limit_info = f" (限制: {limit})" if limit else ""
+        print_step("数据获取", f"{api_label}正在获取转换数据 ({start_date} 到 {end_date}){limit_info}")
         
         # 显示初始资源状态
         self.resource_monitor.print_resource_status(f"{api_label}数据获取开始")
@@ -372,13 +373,26 @@ class InvolveAsiaAPI:
         skipped_pages = []
         data_complete = False
         
+        # 決定每頁的限制數量
+        # 如果用戶指定了limit且小於DEFAULT_PAGE_LIMIT，使用用戶指定的limit
+        # 否則使用DEFAULT_PAGE_LIMIT進行分頁
+        page_limit = config.DEFAULT_PAGE_LIMIT
+        if limit and limit < config.DEFAULT_PAGE_LIMIT:
+            page_limit = limit
+        
         while not data_complete:
+            # 檢查是否已達到限制
+            if limit and len(all_conversions) >= limit:
+                print(f"   [限制達到] 已獲取 {len(all_conversions)} 條記錄，達到限制 {limit}")
+                data_complete = True
+                break
+            
             page_label = f"{api_label}🔄 正在获取第 {page} 页数据..." if api_name else f"\n🔄 正在获取第 {page} 页数据..."
             print(page_label)
             
             data = {
                 "page": str(page),
-                "limit": str(config.DEFAULT_PAGE_LIMIT),
+                "limit": str(page_limit),
                 "start_date": start_date,
                 "end_date": end_date,
                 "filters[preferred_currency]": currency
@@ -394,13 +408,13 @@ class InvolveAsiaAPI:
                 if isinstance(data_obj, dict):
                     page_data = data_obj.get("data", [])
                     current_page = data_obj.get("page", page)
-                    limit = data_obj.get("limit", config.DEFAULT_PAGE_LIMIT)
+                    limit_returned = data_obj.get("limit", page_limit)
                     total_count = data_obj.get("count", 0)
                     next_page = data_obj.get("nextPage")
                     
                     # 计算总页数
                     if total_count > 0:
-                        total_pages = (total_count + limit - 1) // limit
+                        total_pages = (total_count + page_limit - 1) // page_limit
                     
                     pages_fetched += 1
                     api_current_total = len(all_conversions) + len(page_data)
@@ -411,10 +425,11 @@ class InvolveAsiaAPI:
                     # 添加到总数据中
                     all_conversions.extend(page_data)
                     
-                    # 检查是否超过记录数限制
-                    if config.MAX_RECORDS_LIMIT is not None and len(all_conversions) >= config.MAX_RECORDS_LIMIT:
-                        all_conversions = all_conversions[:config.MAX_RECORDS_LIMIT]
-                        print(f"   {api_label}⏹️ 已达到记录数限制 ({config.MAX_RECORDS_LIMIT} 条)，停止获取")
+                    # 如果設置了總限制，並且即將超過，則截斷數據
+                    if limit and len(all_conversions) > limit:
+                        excess_count = len(all_conversions) - limit
+                        all_conversions = all_conversions[:limit]
+                        print(f"   {api_label}✂️ 截斷多餘數據: 移除 {excess_count} 條記錄")
                         data_complete = True
                         break
                     
@@ -440,7 +455,15 @@ class InvolveAsiaAPI:
                     all_conversions.extend(page_data)
                     pages_fetched += 1
                     
-                    if len(page_data) < config.DEFAULT_PAGE_LIMIT:
+                    # 如果設置了總限制，並且即將超過，則截斷數據
+                    if limit and len(all_conversions) > limit:
+                        excess_count = len(all_conversions) - limit
+                        all_conversions = all_conversions[:limit]
+                        print(f"   {api_label}✂️ 截斷多餘數據: 移除 {excess_count} 條記錄")
+                        data_complete = True
+                        break
+                    
+                    if len(page_data) < page_limit:
                         data_complete = True
                         break
                     page += 1

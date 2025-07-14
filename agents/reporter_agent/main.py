@@ -41,7 +41,8 @@ async def generate_report_cli(partner_name: str = "ALL",
                             days_ago: Optional[int] = None,
                             send_email: bool = True,
                             upload_feishu: bool = True,
-                            self_email: bool = False):
+                            self_email: bool = False,
+                            limit: Optional[int] = None):
     """命令行模式生成报表"""
     try:
         logger.info("🚀 Reporter-Agent 命令行模式启动")
@@ -54,11 +55,19 @@ async def generate_report_cli(partner_name: str = "ALL",
             # --days-ago 2 表示拉取2天前那一日的數據
             target_date = datetime.now() - timedelta(days=days_ago)
             start_dt = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_dt = start_dt + timedelta(days=1)
+            end_dt = start_dt + timedelta(days=1) - timedelta(seconds=1)  # 該天的23:59:59
             logger.info(f"🗓️  days_ago={days_ago}, 拉取日期範圍: {start_dt.strftime('%Y-%m-%d %H:%M:%S')} 到 {end_dt.strftime('%Y-%m-%d %H:%M:%S')}")
         else:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d") if start_date else None
             end_dt = datetime.strptime(end_date, "%Y-%m-%d") if end_date else None
+            if start_dt:
+                start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            if end_dt:
+                end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # 添加limit日志
+        if limit:
+            logger.info(f"🔢 设置数据拉取限制: {limit} 条记录")
         
         # 生成报表
         result = await generator.generate_partner_report(
@@ -67,7 +76,8 @@ async def generate_report_cli(partner_name: str = "ALL",
             end_date=end_dt,
             send_email=send_email,
             upload_feishu=upload_feishu,
-            self_email=self_email
+            self_email=self_email,
+            limit=limit
         )
         
         # 输出结果
@@ -79,8 +89,11 @@ async def generate_report_cli(partner_name: str = "ALL",
             logger.info(f"💰 总金额: ${result['total_amount']:,.2f}")
             logger.info(f"📁 生成文件: {len(result['excel_files'])} 个")
             
-            for file_path in result['excel_files']:
-                logger.info(f"   📄 {os.path.basename(file_path)}")
+            # 如果设置了limit且达到限制，显示提示信息
+            if limit and result['total_records'] >= limit:
+                logger.info(f"⚠️ 已达到设置的数据拉取限制 ({limit} 条)，程序正常继续运行")
+                print(f"📋 提示: 由于设置了 --limit {limit} 参数，只处理了前 {limit} 条转化记录")
+                print("🔄 如需处理更多数据，请调整 --limit 参数或移除该参数")
         else:
             logger.error(f"❌ 报表生成失败: {result['error']}")
             sys.exit(1)
@@ -162,6 +175,7 @@ def main():
     generate_parser.add_argument('--no-email', action='store_true', help='不发送邮件')
     generate_parser.add_argument('--no-feishu', action='store_true', help='不上传到飞书')
     generate_parser.add_argument('--self-email', action='store_true', help='发送邮件到自己（测试用）')
+    generate_parser.add_argument('--limit', type=int, help='限制API拉取的转化数量，达到此数量后停止收取数据')
     
     # 测试模式
     test_parser = subparsers.add_parser('test', help='测试数据库连接')
@@ -181,7 +195,8 @@ def main():
             days_ago=args.days_ago,
             send_email=not args.no_email,
             upload_feishu=not args.no_feishu,
-            self_email=args.self_email
+            self_email=args.self_email,
+            limit=args.limit
         ))
         
     elif args.command == 'test':

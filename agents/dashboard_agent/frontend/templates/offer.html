@@ -1,0 +1,646 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-tags me-2"></i>Offer Performance Report
+        </h1>
+        <p class="text-muted">View offer-level conversion performance and revenue analysis</p>
+    </div>
+</div>
+
+<!-- Filter Section -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label for="date_range" class="form-label">日期範圍</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
+                    <input type="text" class="form-control" id="date_range" 
+                           value="2025-07-07 至 2025-07-14" readonly
+                           style="background-color: white; cursor: pointer;">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label for="offer_filter" class="form-label">Offer Category</label>
+                <select class="form-select" id="offer_filter">
+                    <option value="">All Offers</option>
+                    <option value="E-commerce">E-commerce</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Gaming">Gaming</option>
+                    <option value="Travel">Travel</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="partner_filter" class="form-label">Partner</label>
+                <select class="form-select" id="partner_filter">
+                    <option value="">All Partners</option>
+                    <option value="ByteC">ByteC</option>
+                    <option value="DeepLeaper">DeepLeaper</option>
+                    <option value="RAMPUP">RAMPUP</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary">
+                        <i class="fas fa-search me-1"></i>Filter
+                    </button>
+                    <button type="button" class="btn btn-success">
+                        <i class="fas fa-download me-1"></i>Export
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Metrics -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="card bg-primary text-white mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small">Active Offers</div>
+                        <div class="fs-4 fw-bold">15</div>
+                    </div>
+                    <i class="fas fa-tags fa-2x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card bg-success text-white mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small">Total Conversions</div>
+                        <div class="fs-4 fw-bold">1,245</div>
+                    </div>
+                    <i class="fas fa-exchange-alt fa-2x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card bg-warning text-white mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small">Total Revenue</div>
+                        <div class="fs-4 fw-bold">$45.2K</div>
+                    </div>
+                    <i class="fas fa-dollar-sign fa-2x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card bg-info text-white mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small">Avg. Conversion Value</div>
+                        <div class="fs-4 fw-bold">$36.3</div>
+                    </div>
+                    <i class="fas fa-calculator fa-2x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Performing Offers -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">🎯 Offer Level Summary</h5>
+        <small class="text-muted">按优先级排序 - Offer 维度统计</small>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="min-width: 60px;">Rank</th>
+                        <th style="min-width: 200px;">Offer Name</th>
+                        <th style="min-width: 100px;">Category</th>
+                        <th style="min-width: 120px;">Conversion</th>
+                        <th style="min-width: 150px;">Sales Amount</th>
+                        <th style="min-width: 150px;">Estimated Earning</th>
+                        <th style="min-width: 120px;">Conv. Rate</th>
+                        <th style="min-width: 120px;">Avg. Value</th>
+                        <th style="min-width: 120px;">Performance</th>
+                        <th style="min-width: 100px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="badge bg-warning">🥇</span></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="bg-success rounded-circle p-2 me-2" style="width: 32px; height: 32px;">
+                                    <i class="fas fa-shopping-cart text-white small"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold">TikTok Shopping Mall</div>
+                                    <small class="text-muted">ID: TT_SHOP_001</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-primary">E-commerce</span></td>
+                        <td><strong class="text-primary">687</strong></td>
+                        <td><span class="text-success fw-bold">$24,840.00</span></td>
+                        <td><span class="text-success fw-bold">$1,988.80</span></td>
+                        <td>
+                            <span class="badge bg-success">4.8%</span>
+                            <div class="progress mt-1" style="height: 4px;">
+                                <div class="progress-bar bg-success" style="width: 96%"></div>
+                            </div>
+                        </td>
+                        <td class="text-center">$36.15</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-arrow-up text-success me-1"></i>
+                                <span class="text-success small">+23%</span>
+                            </div>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewOfferDetails('TT_SHOP_001')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-secondary">🥈</span></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="bg-info rounded-circle p-2 me-2" style="width: 32px; height: 32px;">
+                                    <i class="fas fa-credit-card text-white small"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold">Digital Bank Plus</div>
+                                    <small class="text-muted">ID: DB_PLUS_002</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-info">Finance</span></td>
+                        <td><strong class="text-primary">312</strong></td>
+                        <td><span class="text-success fw-bold">$11,232.00</span></td>
+                        <td><span class="text-success fw-bold">$898.56</span></td>
+                        <td>
+                            <span class="badge bg-warning">3.2%</span>
+                            <div class="progress mt-1" style="height: 4px;">
+                                <div class="progress-bar bg-warning" style="width: 64%"></div>
+                            </div>
+                        </td>
+                        <td class="text-center">$36.00</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-arrow-up text-success me-1"></i>
+                                <span class="text-success small">+15%</span>
+                            </div>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewOfferDetails('DB_PLUS_002')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-secondary">🥉</span></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="bg-warning rounded-circle p-2 me-2" style="width: 32px; height: 32px;">
+                                    <i class="fas fa-gamepad text-white small"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold">Mobile Game Pro</div>
+                                    <small class="text-muted">ID: MG_PRO_003</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-warning">Gaming</span></td>
+                        <td><strong class="text-primary">158</strong></td>
+                        <td><span class="text-success fw-bold">$5,688.00</span></td>
+                        <td><span class="text-success fw-bold">$455.04</span></td>
+                        <td>
+                            <span class="badge bg-info">2.9%</span>
+                            <div class="progress mt-1" style="height: 4px;">
+                                <div class="progress-bar bg-info" style="width: 58%"></div>
+                            </div>
+                        </td>
+                        <td class="text-center">$36.00</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-minus text-muted me-1"></i>
+                                <span class="text-muted small">0%</span>
+                            </div>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewOfferDetails('MG_PRO_003')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-light text-dark">4</span></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="bg-secondary rounded-circle p-2 me-2" style="width: 32px; height: 32px;">
+                                    <i class="fas fa-plane text-white small"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold">Travel Booking Hub</div>
+                                    <small class="text-muted">ID: TB_HUB_004</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-secondary">Travel</span></td>
+                        <td><strong class="text-primary">88</strong></td>
+                        <td><span class="text-success fw-bold">$3,168.00</span></td>
+                        <td><span class="text-success fw-bold">$253.44</span></td>
+                        <td>
+                            <span class="badge bg-danger">1.8%</span>
+                            <div class="progress mt-1" style="height: 4px;">
+                                <div class="progress-bar bg-danger" style="width: 36%"></div>
+                            </div>
+                        </td>
+                        <td class="text-center">$36.00</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-arrow-down text-danger me-1"></i>
+                                <span class="text-danger small">-8%</span>
+                            </div>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewOfferDetails('TB_HUB_004')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Performance Analytics -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">📈 Offer Performance Trends</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="performanceChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">🏆 Top Categories</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="categoryChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Offer Category Breakdown -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">📊 Category Performance Breakdown</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="border rounded p-3 text-center h-100">
+                    <div class="bg-primary rounded-circle mx-auto mb-2 d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                        <i class="fas fa-shopping-cart text-white"></i>
+                    </div>
+                    <h6 class="text-primary">E-commerce</h6>
+                    <div class="fs-5 fw-bold">687 conversions</div>
+                    <div class="text-success">$24,840 revenue</div>
+                    <div class="mt-2">
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar bg-primary" style="width: 85%"></div>
+                        </div>
+                        <small class="text-muted">85% of target</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-3 text-center h-100">
+                    <div class="bg-info rounded-circle mx-auto mb-2 d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                        <i class="fas fa-credit-card text-white"></i>
+                    </div>
+                    <h6 class="text-info">Finance</h6>
+                    <div class="fs-5 fw-bold">312 conversions</div>
+                    <div class="text-success">$11,232 revenue</div>
+                    <div class="mt-2">
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar bg-info" style="width: 72%"></div>
+                        </div>
+                        <small class="text-muted">72% of target</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-3 text-center h-100">
+                    <div class="bg-warning rounded-circle mx-auto mb-2 d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                        <i class="fas fa-gamepad text-white"></i>
+                    </div>
+                    <h6 class="text-warning">Gaming</h6>
+                    <div class="fs-5 fw-bold">158 conversions</div>
+                    <div class="text-success">$5,688 revenue</div>
+                    <div class="mt-2">
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar bg-warning" style="width: 63%"></div>
+                        </div>
+                        <small class="text-muted">63% of target</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-3 text-center h-100">
+                    <div class="bg-secondary rounded-circle mx-auto mb-2 d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                        <i class="fas fa-plane text-white"></i>
+                    </div>
+                    <h6 class="text-secondary">Travel</h6>
+                    <div class="fs-5 fw-bold">88 conversions</div>
+                    <div class="text-success">$3,168 revenue</div>
+                    <div class="mt-2">
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar bg-secondary" style="width: 45%"></div>
+                        </div>
+                        <small class="text-muted">45% of target</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- All Offers Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">📋 All Active Offers</h5>
+        <div>
+            <button class="btn btn-sm btn-outline-secondary me-2">
+                <i class="fas fa-filter"></i> Advanced Filters
+            </button>
+            <button class="btn btn-sm btn-outline-success">
+                <i class="fas fa-plus"></i> Add Offer
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Offer ID</th>
+                        <th>Offer Name</th>
+                        <th>Category</th>
+                        <th>Partner</th>
+                        <th>Conversions</th>
+                        <th>Revenue</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><small>TT_SHOP_001</small></td>
+                        <td>TikTok Shopping Mall</td>
+                        <td><span class="badge bg-primary">E-commerce</span></td>
+                        <td>ByteC</td>
+                        <td>687</td>
+                        <td>$24,840</td>
+                        <td><span class="badge bg-success">Active</span></td>
+                        <td>
+                            <button class="btn btn-xs btn-outline-primary me-1">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-xs btn-outline-danger">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><small>DB_PLUS_002</small></td>
+                        <td>Digital Bank Plus</td>
+                        <td><span class="badge bg-info">Finance</span></td>
+                        <td>DeepLeaper</td>
+                        <td>312</td>
+                        <td>$11,232</td>
+                        <td><span class="badge bg-success">Active</span></td>
+                        <td>
+                            <button class="btn btn-xs btn-outline-primary me-1">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-xs btn-outline-danger">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><small>MG_PRO_003</small></td>
+                        <td>Mobile Game Pro</td>
+                        <td><span class="badge bg-warning">Gaming</span></td>
+                        <td>RAMPUP</td>
+                        <td>158</td>
+                        <td>$5,688</td>
+                        <td><span class="badge bg-success">Active</span></td>
+                        <td>
+                            <button class="btn btn-xs btn-outline-primary me-1">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-xs btn-outline-danger">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><small>TB_HUB_004</small></td>
+                        <td>Travel Booking Hub</td>
+                        <td><span class="badge bg-secondary">Travel</span></td>
+                        <td>ByteC</td>
+                        <td>88</td>
+                        <td>$3,168</td>
+                        <td><span class="badge bg-warning">Limited</span></td>
+                        <td>
+                            <button class="btn btn-xs btn-outline-primary me-1">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-xs btn-outline-danger">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Data Source Information -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Data Source:</strong> Offer performance data retrieved from DMP-agent via Google SQL. 
+            Conversion rates and revenue metrics are calculated in real-time.
+        </div>
+    </div>
+</div>
+
+<script>
+// 初始化日期范围选择器
+$(document).ready(function() {
+    // 获取当前的日期值
+    var currentStartDate = $('#start_date').val() || moment().subtract(6, 'days').format('YYYY-MM-DD');
+    var currentEndDate = $('#end_date').val() || moment().format('YYYY-MM-DD');
+    
+    $('#date_range').daterangepicker({
+        startDate: moment(currentStartDate),
+        endDate: moment(currentEndDate),
+        opens: 'left',
+        locale: {
+            format: 'YYYY-MM-DD',
+            separator: ' 至 ',
+            applyLabel: '確定',
+            cancelLabel: '取消',
+            fromLabel: '從',
+            toLabel: '到',
+            customRangeLabel: '自定義範圍',
+            weekLabel: 'W',
+            daysOfWeek: ['日', '一', '二', '三', '四', '五', '六'],
+            monthNames: ['一月', '二月', '三月', '四月', '五月', '六月',
+                        '七月', '八月', '九月', '十月', '十一月', '十二月']
+        },
+        ranges: {
+           '今天': [moment(), moment()],
+           '昨天': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+           '最近7天': [moment().subtract(6, 'days'), moment()],
+           '最近30天': [moment().subtract(29, 'days'), moment()],
+           '這個月': [moment().startOf('month'), moment().endOf('month')],
+           '上個月': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+        }
+    }, function(start, end, label) {
+        $('#start_date').val(start.format('YYYY-MM-DD'));
+        $('#end_date').val(end.format('YYYY-MM-DD'));
+        $('#date_range').val(start.format('YYYY-MM-DD') + ' 至 ' + end.format('YYYY-MM-DD'));
+        
+        // 显示加载状态
+        showLoadingState();
+        
+        // 自动提交表单以获取新数据
+        $('#filterForm').submit();
+    });
+    
+    // 初始化图表
+    initCharts();
+});
+
+// 初始化图表
+function initCharts() {
+    // Performance Trends Chart
+    const performanceCtx = document.getElementById('performanceChart').getContext('2d');
+    new Chart(performanceCtx, {
+        type: 'line',
+        data: {
+            labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7'],
+            datasets: [
+                {
+                    label: 'TikTok Shopping Mall',
+                    data: [95, 102, 118, 134, 145, 158, 172],
+                    borderColor: '#28a745',
+                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                    borderWidth: 2
+                },
+                {
+                    label: 'Digital Bank Plus',
+                    data: [42, 48, 52, 58, 61, 65, 68],
+                    borderColor: '#17a2b8',
+                    backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                    borderWidth: 2
+                },
+                {
+                    label: 'Mobile Game Pro',
+                    data: [18, 22, 25, 28, 31, 29, 32],
+                    borderColor: '#ffc107',
+                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                    borderWidth: 2
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    
+    // Category Distribution Chart
+    const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+    new Chart(categoryCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['E-commerce', 'Finance', 'Gaming', 'Travel'],
+            datasets: [{
+                data: [687, 312, 158, 88],
+                backgroundColor: ['#007bff', '#17a2b8', '#ffc107', '#6c757d'],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+// 显示加载状态
+function showLoadingState() {
+    // 在页面顶部显示加载提示
+    $('body').prepend('<div id="loadingOverlay" class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style="background-color: rgba(255,255,255,0.8); z-index: 9999;"><div class="text-center"><div class="spinner-border text-primary mb-2" role="status"></div><div>正在加載數據...</div></div></div>');
+}
+
+// 查看Offer详情
+function viewOfferDetails(offerId) {
+    alert(`View detailed analytics for Offer: ${offerId}\n\nThis will show conversion funnel, traffic sources, and performance metrics.`);
+}
+
+// Set current page as active in navigation
+document.addEventListener('DOMContentLoaded', function() {
+    const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
+    navLinks.forEach(link => link.classList.remove('active'));
+    
+    const offerLink = document.querySelector('a[href="/offer"]');
+    if (offerLink) {
+        offerLink.classList.add('active');
+    }
+});
+</script>
+
+<style>
+.btn-xs {
+    padding: 0.125rem 0.25rem;
+    font-size: 0.75rem;
+}
+</style>
+{% endblock %} 

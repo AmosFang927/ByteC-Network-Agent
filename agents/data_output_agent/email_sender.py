@@ -46,7 +46,7 @@ class EmailSender:
         self.retry_delay = getattr(config, 'EMAIL_RETRY_DELAY', 5)
         self.retry_backoff = getattr(config, 'EMAIL_RETRY_BACKOFF', 2)
     
-    def send_partner_reports(self, partner_summary, feishu_upload_result=None, report_date=None, start_date=None):
+    def send_partner_reports(self, partner_summary, feishu_upload_result=None, report_date=None, start_date=None, self_email=False):
         """
         按Partner分别发送转换报告邮件
         
@@ -109,7 +109,11 @@ class EmailSender:
                     continue
                 
                 # 获取该Partner的收件人
-                receivers = self.partner_email_mapping.get(partner_name, self.default_receivers)
+                if self_email:
+                    # 如果是自发邮件模式，发送到自己的邮箱
+                    receivers = [self.sender]
+                else:
+                    receivers = self.partner_email_mapping.get(partner_name, self.default_receivers)
                 
                 # 准备该Partner的邮件数据
                 email_data = self._prepare_partner_email_data(partner_name, partner_data, report_date, start_date)
@@ -234,8 +238,15 @@ class EmailSender:
         """准备Partner邮件数据"""
         if report_date is None:
             report_date = datetime.now().strftime("%Y-%m-%d")
+        elif hasattr(report_date, 'strftime'):
+            # 如果是 datetime 對象，轉換為字符串
+            report_date = report_date.strftime("%Y-%m-%d")
+            
         if start_date is None:
             start_date = report_date
+        elif hasattr(start_date, 'strftime'):
+            # 如果是 datetime 對象，轉換為字符串
+            start_date = start_date.strftime("%Y-%m-%d")
         
         file_path = partner_data.get('file_path')
         
@@ -277,12 +288,34 @@ class EmailSender:
             
             for sheet_name in wb.sheetnames:
                 try:
+                    # 跳过Partner主sheet，因为它包含汇总信息，會重複計算
+                    # Partner主sheet包含所有數據的匯總，Source sheets包含分組數據
+                    # 我們只從Source sheets計算以避免重複
+                    if '_' not in sheet_name:  # Partner主sheet沒有下劃線（如RAMPUP）
+                        print_step("金额计算", f"📋 跳过Sheet '{sheet_name}': Partner主sheet（避免重複計算）")
+                        sheet_details.append(f"  - {sheet_name}: 跳过 (Partner主sheet)")
+                        continue
+                    
                     # 读取该sheet的数据
+                    # 首先嘗試正常讀取，如果有Summary信息則會在後面處理
                     df = pd.read_excel(file_path, sheet_name=sheet_name)
+                    
+                    # 如果第一行不是標準的列名，可能是新格式的Summary信息
+                    # 嘗試找到真正的數據開始行
+                    if 'USD Sale Amount' not in df.columns:
+                        # 嘗試不同的skiprows值來找到數據
+                        for skip_rows in range(1, 15):
+                            try:
+                                test_df = pd.read_excel(file_path, sheet_name=sheet_name, skiprows=skip_rows)
+                                if 'USD Sale Amount' in test_df.columns:
+                                    df = test_df
+                                    break
+                            except:
+                                continue
                     
                     # 支持多种可能的销售金额列名
                     sales_amount_col = None
-                    possible_col_names = ['sale_amount', 'Sale Amount', 'sales_amount', 'SALE_AMOUNT']
+                    possible_col_names = ['USD Sale Amount', 'sale_amount', 'Sale Amount', 'sales_amount', 'SALE_AMOUNT']
                     
                     for col_name in possible_col_names:
                         if col_name in df.columns:
@@ -326,37 +359,82 @@ class EmailSender:
             wb = openpyxl.load_workbook(file_path, read_only=True)
             sources_stats = []
             
+            print_step("Sources统计", f"📊 正在计算 {os.path.basename(file_path)} 的Sources统计...")
+            
             for sheet_name in wb.sheetnames:
-                ws = wb[sheet_name]
+                try:
+                    # 跳过Partner主sheet，只处理Source sheets（包含下划线的）
+                    if '_' not in sheet_name:  # Partner主sheet沒有下劃線（如RAMPUP）
+                        print_step("Sources统计", f"📋 跳过Sheet '{sheet_name}': Partner主sheet")
+                        continue
+                    
+                    ws = wb[sheet_name]
+                    
+                    # 读取该sheet的数据来计算销售金额
+                    df = pd.read_excel(file_path, sheet_name=sheet_name)
+                    
+                    # 如果第一行不是標準的列名，可能是新格式的Summary信息
+                    # 嘗試找到真正的數據開始行
+                    if 'USD Sale Amount' not in df.columns:
+                        # 嘗試不同的skiprows值來找到數據
+                        for skip_rows in range(1, 15):
+                            try:
+                                test_df = pd.read_excel(file_path, sheet_name=sheet_name, skiprows=skip_rows)
+                                if 'USD Sale Amount' in test_df.columns:
+                                    df = test_df
+                                    break
+                            except:
+                                continue
+                    
+                    # 支持多种可能的销售金额列名
+                    sales_amount_col = None
+                    possible_col_names = ['USD Sale Amount', 'sale_amount', 'Sale Amount', 'sales_amount', 'SALE_AMOUNT']
+                    
+                    for col_name in possible_col_names:
+                        if col_name in df.columns:
+                            sales_amount_col = col_name
+                            break
+                    
+                    if sales_amount_col and len(df) > 0:
+                        # 处理格式化的美元金额字符串（如"$123.45"）
+                        def parse_currency(value):
+                            """解析货币字符串，返回数值"""
+                            if pd.isna(value):
+                                return 0.0
+                            if isinstance(value, str):
+                                # 移除美元符号、逗号和其他非数字字符
+                                cleaned_value = value.replace('$', '').replace(',', '').strip()
+                                try:
+                                    return float(cleaned_value)
+                                except ValueError:
+                                    return 0.0
+                            return float(value) if value else 0.0
+                        
+                        sales_amount = df[sales_amount_col].apply(parse_currency).sum()
+                        formatted_amount = f"${sales_amount:,.2f}"
+                        row_count = len(df)
+                        print_step("Sources统计", f"📋 Sheet '{sheet_name}': {formatted_amount} ({row_count} 条记录，使用列'{sales_amount_col}')")
+                    else:
+                        formatted_amount = '$0.00'
+                        row_count = len(df) if not df.empty else 0
+                        print_step("Sources统计", f"⚠️ Sheet '{sheet_name}': 无销售金额列或无数据")
+                    
+                    sources_stats.append({
+                        'source_name': sheet_name,
+                        'records': row_count,
+                        'sales_amount': formatted_amount
+                    })
                 
-                # 跳过第一行标题，计算记录数
-                row_count = ws.max_row - 1 if ws.max_row > 1 else 0
-                
-                # 读取该sheet的数据来计算销售金额
-                df = pd.read_excel(file_path, sheet_name=sheet_name)
-                
-                # 支持多种可能的销售金额列名
-                sales_amount_col = None
-                possible_col_names = ['sale_amount', 'Sale Amount', 'sales_amount', 'SALE_AMOUNT']
-                
-                for col_name in possible_col_names:
-                    if col_name in df.columns:
-                        sales_amount_col = col_name
-                        break
-                
-                if sales_amount_col and len(df) > 0:
-                    sales_amount = df[sales_amount_col].sum()
-                    formatted_amount = f"${sales_amount:,.2f}"
-                else:
-                    formatted_amount = '$0.00'
-                
-                sources_stats.append({
-                    'source_name': sheet_name,
-                    'records': row_count,
-                    'sales_amount': formatted_amount
-                })
+                except Exception as e:
+                    print_step("Sources统计", f"⚠️ 处理Sheet '{sheet_name}' 失败: {str(e)}")
+                    sources_stats.append({
+                        'source_name': sheet_name,
+                        'records': 0,
+                        'sales_amount': '$0.00'
+                    })
             
             wb.close()
+            print_step("Sources统计", f"✅ 成功计算 {len(sources_stats)} 个Sources统计")
             return sources_stats
             
         except Exception as e:
@@ -436,7 +514,12 @@ class EmailSender:
     def _load_html_template(self, template_name):
         """加载HTML模板文件"""
         try:
-            template_path = os.path.join('templates', template_name)
+            # 獲取項目根目錄路徑
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.join(current_dir, '..', '..')
+            project_root = os.path.normpath(project_root)
+            template_path = os.path.join(project_root, 'templates', template_name)
+            
             with open(template_path, 'r', encoding='utf-8') as f:
                 return f.read()
         except Exception as e:
@@ -498,8 +581,8 @@ class EmailSender:
         # 替换模板中的占位符
         body = template.replace('{{date}}', report_date)
         body = body.replace('{{partner_name}}', partner_name)  # 注意：这里改为partner_name
-        body = body.replace('{{start_date}}', start_date)
-        body = body.replace('{{end_date}}', end_date)
+        body = body.replace('{{start_date}}', str(start_date))
+        body = body.replace('{{end_date}}', str(end_date))
         body = body.replace('{{total_records}}', f"{total_records:,}")
         body = body.replace('{{total_amount}}', total_amount)
         body = body.replace('{{main_file}}', main_file)
@@ -521,6 +604,12 @@ class EmailSender:
             source_name = stat.get('source_name', 'Unknown')
             records = stat.get('records', 0)
             sales_amount = stat.get('sales_amount', '$0.00')
+            
+            # 确保records是整数类型
+            try:
+                records = int(records) if records is not None else 0
+            except (ValueError, TypeError):
+                records = 0
             
             html_parts.append(f"<li style='margin: 8px 0; padding: 8px; background-color: #ffffff; border: 1px solid #e9ecef; border-radius: 4px;'>")
             html_parts.append(f"<strong>- {source_name}:</strong> ")
@@ -815,8 +904,8 @@ class EmailSender:
                     feishu_section = feishu_template.replace('{{feishu_links}}', feishu_links)
         
         # 替换模板中的占位符
-        body = template.replace('{{start_date}}', start_date)
-        body = body.replace('{{end_date}}', end_date)
+        body = template.replace('{{start_date}}', str(start_date))
+        body = body.replace('{{end_date}}', str(end_date))
         body = body.replace('{{main_file}}', main_file)
         body = body.replace('{{completion_time}}', completion_time)
         body = body.replace('{{feishu_section}}', feishu_section)
@@ -897,7 +986,7 @@ class EmailSender:
             
             # 金额计算 - 支持多种列名格式
             sales_amount_column = None
-            for col in ['sale_amount', 'Sale Amount', 'sales_amount']:
+            for col in ['USD Sale Amount', 'sale_amount', 'Sale Amount', 'sales_amount']:
                 if col in df.columns:
                     sales_amount_column = col
                     break
@@ -1169,7 +1258,7 @@ class EmailSender:
             sales_amount_column = None
             earning_column = None
             
-            for col in ['sale_amount', 'Sale Amount', 'sales_amount']:
+            for col in ['USD Sale Amount', 'sale_amount', 'Sale Amount', 'sales_amount']:
                 if col in df.columns:
                     sales_amount_column = col
                     break
@@ -1311,12 +1400,24 @@ class EmailSender:
         last_error = None
         delay = self.retry_delay
         
+        # 检测邮件大小并动态调整超时
+        msg_size = len(msg.as_string())
+        dynamic_timeout = self.smtp_timeout
+        
+        # 大文件处理：如果邮件超过 5MB，增加超时时间
+        if msg_size > 5 * 1024 * 1024:  # 5MB
+            dynamic_timeout = max(180, self.smtp_timeout * 1.5)  # 至少3分钟
+            print_step(f"{operation_name}大文件", f"📎 检测到大附件 ({msg_size/1024/1024:.1f}MB)，超时调整为 {dynamic_timeout}秒")
+        elif msg_size > 1 * 1024 * 1024:  # 1MB
+            dynamic_timeout = max(120, self.smtp_timeout * 1.2)  # 至少2分钟
+            print_step(f"{operation_name}中等文件", f"📎 检测到中等附件 ({msg_size/1024/1024:.1f}MB)，超时调整为 {dynamic_timeout}秒")
+        
         for attempt in range(self.max_retries + 1):  # +1 因为第一次不算重试
             try:
-                print_step(f"{operation_name}尝试", f"第 {attempt + 1} 次尝试 (超时设置: {self.smtp_timeout}秒)")
+                print_step(f"{operation_name}尝试", f"第 {attempt + 1} 次尝试 (超时设置: {dynamic_timeout}秒)")
                 
-                # 创建SMTP连接，设置超时
-                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=self.smtp_timeout) as server:
+                # 创建SMTP连接，设置动态超时
+                with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=dynamic_timeout) as server:
                     # 设置调试模式（仅在开发时启用）
                     # server.set_debuglevel(1)
                     

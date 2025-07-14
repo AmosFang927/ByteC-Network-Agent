@@ -12,10 +12,10 @@
 在postback模塊中，需支持多postback endpoints（目前一個ep對應到一個partner, 比如說 bytec-postback..../involve 這就是partner "InvolveAsia"), 不同 postback ep 需要對應產生不同的google cloud run
 
 demand
-- linkshare api, test traffic
+- linkshare api, test traffic, TT local account, partner name adjustment
 - usman postback, test traffic
 - IAByteC postback, confirmed plan
-- at TTS camapgin, test traffic
+- AT TTS camapgin, test traffic
 - google sql database, UI & Vertex AI
 
 supply

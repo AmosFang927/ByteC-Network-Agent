@@ -117,7 +117,7 @@ def start_scheduler(weekly_reporter):
     启动定时任务的便捷函数
     
     Args:
-        weekly_reporter: WeeklyReporter实例
+        weekly_reporter: ByteCNetworkAgent实例
     
     Returns:
         ReportScheduler: 调度器实例

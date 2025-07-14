@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-tachometer-alt me-2"></i>总览 Dashboard
+        </h1>
+        <p class="text-muted">ByteC Network Agent 性能总览</p>
+    </div>
+</div>
+
+<!-- 关键指标卡片 -->
+<div class="row mb-4" id="metricsCards">
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-2">总转化数</h6>
+                        <h3 class="mb-0" id="totalConversions">-</h3>
+                        <small class="text-success" id="conversionsGrowth">-</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-exchange-alt fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-2">总销售额</h6>
+                        <h3 class="mb-0" id="totalSales">-</h3>
+                        <small class="text-info" id="salesGrowth">-</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-dollar-sign fa-2x text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-2">总佣金</h6>
+                        <h3 class="mb-0" id="totalPayout">-</h3>
+                        <small class="text-warning" id="payoutGrowth">-</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-coins fa-2x text-warning"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-2">平均单价</h6>
+                        <h3 class="mb-0" id="avgSaleAmount">-</h3>
+                        <small class="text-secondary" id="avgGrowth">-</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-chart-line fa-2x text-info"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 图表区域 -->
+<div class="row mb-4">
+    <!-- 每日趋势图 -->
+    <div class="col-lg-8 mb-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-line me-2"></i>每日趋势
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="dailyTrendChart" height="120"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 小时分布图 -->
+    <div class="col-lg-4 mb-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-clock me-2"></i>24小时分布
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="hourlyDistributionChart" height="160"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 详细数据表格 -->
+<div class="row">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-table me-2"></i>详细数据
+                </h5>
+                <div>
+                    <select class="form-select form-select-sm" id="partnerFilter">
+                        <option value="">全部合作伙伴</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="summaryTable">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>转化数</th>
+                                <th>销售额</th>
+                                <th>佣金</th>
+                                <th>平均单价</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summaryTableBody">
+                            <!-- 数据将通过JavaScript动态填充 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 数据钻取模态框 -->
+<div class="modal fade" id="drillModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">数据钻取</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="drillContent">
+                    <!-- 钻取内容将动态加载 -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+$(document).ready(function() {
+    // 初始化总览页面
+    SummaryDashboard.init();
+    
+    // 设置当前页面导航状态
+    $('.navbar-nav .nav-link').removeClass('active');
+    $('a[href="{{ url_for('summary_page') }}"]').addClass('active');
+});
+
+// 总览Dashboard类
+const SummaryDashboard = {
+    data: null,
+    charts: {},
+    
+    init: function() {
+        this.loadData();
+        this.setupEventHandlers();
+    },
+    
+    loadData: function() {
+        const params = Dashboard.getDateRangeParams();
+        const partnerFilter = $('#partnerFilter').val();
+        
+        if (partnerFilter) {
+            params.partner_id = partnerFilter;
+        }
+        
+        Dashboard.showLoading();
+        
+        $.ajax({
+            url: '/api/summary',
+            data: params,
+            success: (response) => {
+                Dashboard.hideLoading();
+                if (response.status === 'success') {
+                    this.data = response.data;
+                    this.renderData();
+                } else {
+                    Dashboard.showError('数据加载失败: ' + response.message);
+                }
+            },
+            error: (xhr) => {
+                Dashboard.hideLoading();
+                Dashboard.showError('请求失败');
+            }
+        });
+    },
+    
+    renderData: function() {
+        if (!this.data) return;
+        
+        this.renderMetrics();
+        this.renderCharts();
+        this.renderTable();
+    },
+    
+    renderMetrics: function() {
+        const metrics = this.data.metrics || {};
+        
+        $('#totalConversions').text(this.formatNumber(metrics.total_conversions || 0));
+        $('#totalSales').text('$' + this.formatCurrency(metrics.total_sales || 0));
+        $('#totalPayout').text('$' + this.formatCurrency(metrics.total_payout || 0));
+        $('#avgSaleAmount').text('$' + this.formatCurrency(metrics.avg_sale_amount || 0));
+        
+        // 显示增长率
+        const growth = this.data.growth_rate || {};
+        const growthText = growth.daily_growth > 0 ? 
+            `+${growth.daily_growth}%` : `${growth.daily_growth}%`;
+        const growthClass = growth.trend === 'up' ? 'text-success' : 
+                           growth.trend === 'down' ? 'text-danger' : 'text-muted';
+        
+        $('#conversionsGrowth').text(growthText).attr('class', growthClass);
+    },
+    
+    renderCharts: function() {
+        // 每日趋势图
+        const dailyData = this.data.daily_trend || [];
+        if (dailyData.length > 0) {
+            this.charts.dailyTrend = Charts.createDailyTrendChart('dailyTrendChart', dailyData);
+        }
+        
+        // 小时分布图
+        const hourlyData = this.data.hourly_trend || [];
+        if (hourlyData.length > 0) {
+            this.charts.hourlyDistribution = Charts.createHourlyDistributionChart('hourlyDistributionChart', hourlyData);
+        }
+    },
+    
+    renderTable: function() {
+        const dailyData = this.data.daily_trend || [];
+        const tbody = $('#summaryTableBody');
+        tbody.empty();
+        
+        dailyData.forEach(row => {
+                         const tr = $('<tr>' +
+                 '<td>' + row.date + '</td>' +
+                 '<td>' + this.formatNumber(row.conversions) + '</td>' +
+                 '<td>$' + this.formatCurrency(row.total_sales) + '</td>' +
+                 '<td>$' + this.formatCurrency(row.total_payout) + '</td>' +
+                 '<td>$' + this.formatCurrency(row.avg_sale_amount) + '</td>' +
+                 '<td>' +
+                     '<button class="btn btn-sm btn-outline-primary drill-btn" ' +
+                             'data-type="daily" data-value="' + row.date + '">' +
+                         '<i class="fas fa-search me-1"></i>钻取' +
+                     '</button>' +
+                 '</td>' +
+             '</tr>');
+            tbody.append(tr);
+        });
+    },
+    
+    setupEventHandlers: function() {
+        // 合作伙伴过滤器
+        $('#partnerFilter').on('change', () => {
+            this.loadData();
+        });
+        
+        // 数据钻取
+        $(document).on('click', '.drill-btn', (e) => {
+            const btn = $(e.target);
+            const type = btn.data('type');
+            const value = btn.data('value');
+            this.performDrill(type, value);
+        });
+    },
+    
+         performDrill: function(type, value) {
+         const params = Dashboard.getDateRangeParams();
+         params.filter_key = 'date';
+         params.filter_value = value;
+         
+         $.ajax({
+             url: '/api/drill/' + type,
+             data: params,
+             success: (response) => {
+                 if (response.status === 'success') {
+                     this.showDrillModal(response.data);
+                 } else {
+                     Dashboard.showError('钻取失败: ' + response.message);
+                 }
+             },
+             error: () => {
+                 Dashboard.showError('钻取请求失败');
+             }
+         });
+     },
+    
+    showDrillModal: function(data) {
+        const content = $('#drillContent');
+        content.html(`
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>项目</th>
+                            <th>转化数</th>
+                            <th>销售额</th>
+                            <th>佣金</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.results.map(item => `
+                            <tr>
+                                <td>${item.offer_name || item.partner_name || '未知'}</td>
+                                <td>${this.formatNumber(item.conversions)}</td>
+                                <td>$${this.formatCurrency(item.total_sales)}</td>
+                                <td>$${this.formatCurrency(item.total_payout)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `);
+        
+        $('#drillModal').modal('show');
+    },
+    
+    formatNumber: function(num) {
+        return new Intl.NumberFormat('zh-CN').format(num || 0);
+    },
+    
+    formatCurrency: function(amount) {
+        return new Intl.NumberFormat('zh-CN', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(amount || 0);
+    }
+};
+</script>
+{% endblock %} 

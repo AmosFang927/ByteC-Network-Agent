@@ -1,0 +1,84 @@
+{
+  "timestamp": "2025-07-13T23:31:43.929764",
+  "url": "https://app.involve.asia/publisher/report",
+  "title": "Performance Overview - Involve Asia",
+  "html_structure": {
+    "elements": {
+      "div": 0,
+      "section": 0,
+      "article": 0,
+      "nav": 0,
+      "header": 0,
+      "footer": 0,
+      "main": 0,
+      "aside": 0
+    },
+    "accessibility": {
+      "total_images": 0,
+      "alt_texts": 0,
+      "missing_alt": 0,
+      "aria_labels": 0
+    },
+    "semantic_structure": {
+      "headings": {
+        "h1": 0,
+        "h2": 0,
+        "h3": 0,
+        "h4": 0,
+        "h5": 0,
+        "h6": 0
+      },
+      "lists": 0,
+      "tables": 0
+    }
+  },
+  "css_analysis": {
+    "external_stylesheets": 0,
+    "inline_styles": 0,
+    "css_variables": {},
+    "colors": {},
+    "responsive_design": {
+      "has_viewport_meta": true,
+      "media_queries": 0
+    }
+  },
+  "javascript_analysis": {
+    "external_scripts": 0,
+    "frameworks": [],
+    "spa_detected": false,
+    "event_listeners": {}
+  },
+  "layout_analysis": {
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "body_dimensions": {
+      "width": 0,
+      "height": 0
+    },
+    "layout_type": "responsive_grid"
+  },
+  "navigation_analysis": {
+    "nav_elements": 0,
+    "menu_items": [],
+    "breadcrumbs": []
+  },
+  "forms_analysis": {
+    "forms_count": 0,
+    "input_types": {},
+    "total_inputs": 0
+  },
+  "content_analysis": {
+    "word_count": 1,
+    "character_count": 14,
+    "language": "chinese",
+    "has_chinese": true,
+    "has_english": false
+  },
+  "performance_data": {
+    "stats": {},
+    "table_data": [],
+    "extraction_time": "2025-07-13T23:31:43.940081"
+  }
+}

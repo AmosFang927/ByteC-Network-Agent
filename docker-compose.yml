@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  weeklyreporter:
+  bytec-network-agent:
     build: .
-    container_name: weeklyreporter
+    container_name: bytec-network-agent
     volumes:
       - ./output:/app/output  # 映射输出目录到本地
       - ./temp:/app/temp      # 映射临时目录到本地
@@ -14,9 +14,9 @@ services:
     # command: ["python", "-c", "import time; time.sleep(86400)"]  # 保持容器运行
     
   # 可选：定时任务服务
-  weeklyreporter-scheduler:
+  bytec-network-agent-scheduler:
     build: .
-    container_name: weeklyreporter-scheduler
+    container_name: bytec-network-agent-scheduler
     volumes:
       - ./output:/app/output
       - ./temp:/app/temp

@@ -30,7 +30,7 @@ from config import (
     FEISHU_APP_SECRET,
     FEISHU_PARENT_NODE
 )
-from modules.email_sender import EmailSender
+from agents.data_output_agent.email_sender import EmailSender
 from modules.feishu_uploader import FeishuUploader
 
 

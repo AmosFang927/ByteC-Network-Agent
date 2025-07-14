@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 # =============================================================================
 # API配置 - Involve Asia
 # =============================================================================
-INVOLVE_ASIA_API_SECRET = "boiTXnRgB2B3N7rCictjjti1ufNIzKksSURJHwqtC50="
+INVOLVE_ASIA_API_SECRET = "Q524XgLnQmrIBiOK8ZD2qmgmQDPbuTqx13tBDWd6BT0="
 INVOLVE_ASIA_API_KEY = "general"
 INVOLVE_ASIA_BASE_URL = "https://api.involve.asia/api"
 INVOLVE_ASIA_AUTH_URL = f"{INVOLVE_ASIA_BASE_URL}/authenticate"
@@ -234,10 +234,10 @@ EMAIL_INCLUDE_FEISHU_LINKS = False  # 是否包含飞书链接
 EMAIL_SUBJECT_TEMPLATE = "Conversion Report - {date}"  # 邮件主题模板
 
 # 邮件超时和重试配置
-EMAIL_SMTP_TIMEOUT = 60  # SMTP连接超时时间(秒)
-EMAIL_MAX_RETRIES = 3    # 最大重试次数
-EMAIL_RETRY_DELAY = 5    # 初始重试延迟(秒)
-EMAIL_RETRY_BACKOFF = 2  # 指数退避倍数
+EMAIL_SMTP_TIMEOUT = 120  # SMTP连接超时时间(秒) - 增加到120秒处理大附件
+EMAIL_MAX_RETRIES = 4     # 最大重试次数 - 增加重试次数
+EMAIL_RETRY_DELAY = 10    # 初始重试延迟(秒) - 增加延迟给服务器恢复时间
+EMAIL_RETRY_BACKOFF = 1.5 # 指数退避倍数 - 减少退避倍数，避免等待过久
 
 # 邮件自动抄送配置
 EMAIL_AUTO_CC = "AmosFang927@gmail.com"  # 自动抄送邮箱，设为None可禁用

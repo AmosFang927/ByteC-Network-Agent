@@ -1,7 +1,0 @@
-{
-  "registry-mirrors": [
-    "https://docker.m.daocloud.io",
-    "https://dockerhub.azk8s.cn",
-    "https://reg-mirror.qiniu.com"
-  ]
-} 

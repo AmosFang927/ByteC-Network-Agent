@@ -1,0 +1,7 @@
+flask>=2.3.0
+flask-cors>=4.0.0
+asyncpg>=0.29.0
+asyncio
+logging
+datetime
+typing 

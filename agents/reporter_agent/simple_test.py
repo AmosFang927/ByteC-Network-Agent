@@ -30,7 +30,7 @@ except ImportError as e:
     print(f"❌ 飛書上傳模塊導入失敗: {e}")
 
 try:
-    from modules.email_sender import EmailSender
+    from agents.data_output_agent.email_sender import EmailSender
     print("✅ 郵件發送模塊導入成功")
 except ImportError as e:
     print(f"❌ 郵件發送模塊導入失敗: {e}")

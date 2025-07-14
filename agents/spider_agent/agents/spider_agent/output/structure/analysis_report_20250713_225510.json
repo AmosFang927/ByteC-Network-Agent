@@ -1,0 +1,71 @@
+{
+  "timestamp": "2025-07-13T22:55:10.149884",
+  "url": "https://app.involve.asia/publisher/report",
+  "title": "Involve Asia Performance Report",
+  "html_structure": {
+    "elements": {
+      "div": 50,
+      "section": 10,
+      "nav": 3
+    },
+    "accessibility": {
+      "alt_texts": 15,
+      "missing_alt": 3,
+      "aria_labels": 8
+    }
+  },
+  "css_analysis": {
+    "external_stylesheets": 5,
+    "inline_styles": 12,
+    "css_variables": {
+      "--primary-color": "#3498db",
+      "--text-color": "#333"
+    },
+    "responsive_design": {
+      "has_viewport_meta": true,
+      "media_queries": 8
+    }
+  },
+  "javascript_analysis": {
+    "external_scripts": 8,
+    "frameworks": [
+      "React",
+      "jQuery"
+    ],
+    "event_listeners": {
+      "click": 25,
+      "submit": 5
+    }
+  },
+  "layout_analysis": {
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "sections": 15,
+    "layout_type": "responsive_grid"
+  },
+  "navigation_analysis": {
+    "nav_elements": 2,
+    "menu_items": [
+      "Dashboard",
+      "Reports",
+      "Performance",
+      "Settings"
+    ],
+    "breadcrumbs": [
+      "Home",
+      "Reports",
+      "Performance"
+    ]
+  },
+  "forms_analysis": {
+    "forms_count": 3,
+    "input_types": {
+      "text": 8,
+      "email": 2,
+      "password": 1,
+      "submit": 3
+    }
+  }
+}

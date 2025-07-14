@@ -1,0 +1,120 @@
+-- Schema Backup Created: 2025-07-14 12:29:45.275131
+-- Database: postback_db
+
+-- Table: aff_sub_partner_mapping
+-- Columns for aff_sub_partner_mapping:
+--   id: integer
+--   aff_sub_pattern: character varying
+--   partner_id: integer
+--   pattern_type: character varying
+--   description: text
+--   created_at: timestamp with time zone
+
+-- Table: business_partners
+-- Columns for business_partners:
+--   id: integer
+--   partner_code: character varying
+--   partner_name: character varying
+--   description: text
+--   email_enabled: boolean
+--   email_recipients: ARRAY
+--   source_pattern: character varying
+--   is_active: boolean
+--   created_at: timestamp with time zone
+--   updated_at: timestamp with time zone
+
+-- Table: conversions
+-- Columns for conversions:
+--   id: integer
+--   tenant_id: integer
+--   conversion_id: character varying
+--   offer_name: character varying
+--   usd_sale_amount: numeric
+--   usd_payout: numeric
+--   aff_sub: character varying
+--   event_time: timestamp with time zone
+--   raw_data: jsonb
+--   created_at: timestamp with time zone
+--   partner_id: integer
+--   platform_id: integer
+--   platform: character varying
+--   partner: character varying
+--   source: character varying
+--   sale_amount: numeric
+--   payout: numeric
+--   base_payout: numeric
+--   bonus_payout: numeric
+--   sale_amount_local: numeric
+--   myr_sale_amount: numeric
+--   payout_local: numeric
+--   myr_payout: numeric
+--   aff_sub1: character varying
+--   aff_sub2: character varying
+--   aff_sub3: character varying
+--   aff_sub4: character varying
+--   aff_sub5: character varying
+--   adv_sub: character varying
+--   adv_sub1: character varying
+--   adv_sub2: character varying
+--   adv_sub3: character varying
+--   adv_sub4: character varying
+--   adv_sub5: character varying
+--   conversion_status: character varying
+--   offer_status: character varying
+--   merchant_id: character varying
+--   affiliate_remarks: text
+--   click_id: character varying
+--   click_time: timestamp with time zone
+--   datetime_conversion: timestamp with time zone
+--   datetime_conversion_updated: timestamp with time zone
+--   currency: character varying
+--   conversion_currency: character varying
+--   commission_rate: numeric
+--   avg_commission_rate: numeric
+--   order_id: character varying
+--   offer_id: character varying
+--   updated_at: timestamp with time zone
+
+-- Table: partners
+-- Columns for partners:
+--   id: integer
+--   partner_code: character varying
+--   partner_name: character varying
+--   platform_id: integer
+--   description: text
+--   contact_email: character varying
+--   contact_phone: character varying
+--   is_active: boolean
+--   created_at: timestamp with time zone
+--   updated_at: timestamp with time zone
+
+-- Table: platforms
+-- Columns for platforms:
+--   id: integer
+--   platform_code: character varying
+--   platform_name: character varying
+--   platform_endpoint_path: character varying
+--   endpoint_url: character varying
+--   cloud_run_service_name: character varying
+--   cloud_run_region: character varying
+--   cloud_run_project_id: character varying
+--   database_name: character varying
+--   database_url: character varying
+--   parameter_mapping: json
+--   is_active: boolean
+--   created_at: timestamp with time zone
+--   updated_at: timestamp with time zone
+--   api_secret: character varying
+--   description: text
+
+-- Table: sources
+-- Columns for sources:
+--   id: integer
+--   source_code: character varying
+--   source_name: character varying
+--   partner_id: integer
+--   description: text
+--   is_active: boolean
+--   created_at: timestamp with time zone
+--   updated_at: timestamp with time zone
+

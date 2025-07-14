@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ByteC Network Dashboard</title>
+    <link rel="stylesheet" href="bytec_dashboard_20250713_225510.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <ul class="nav-menu">
+                <li><strong>ByteC Network</strong></li>
+                <li><a href="#" class="nav-link">Dashboard</a></li><li><a href="#" class="nav-link">Reports</a></li><li><a href="#" class="nav-link">Performance</a></li><li><a href="#" class="nav-link">Settings</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="card">
+            <div class="card-header">
+                <h1 class="card-title">🎯 Performance Dashboard</h1>
+                <p>基於Involve Asia結構分析的現代化儀表板</p>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">📊 數據總覽</h2>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-number">1,234</span>
+                        <span class="stat-label">總轉換</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-number">$5,678</span>
+                        <span class="stat-label">總收益</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-number">89%</span>
+                        <span class="stat-label">成功率</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-number">156</span>
+                        <span class="stat-label">合作夥伴</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">📈 性能趨勢</h2>
+                </div>
+                <div style="height: 200px; background: #f8f9fa; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #666;">
+                    圖表區域 - 可整合Chart.js或其他圖表庫
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">📋 最新活動</h2>
+                </div>
+                <div class="activity-list">
+                    <div style="padding: 10px 0; border-bottom: 1px solid #eee;">
+                        <strong>2小時前</strong> - 新轉換記錄來自Partner A
+                    </div>
+                    <div style="padding: 10px 0; border-bottom: 1px solid #eee;">
+                        <strong>4小時前</strong> - 系統性能優化完成
+                    </div>
+                    <div style="padding: 10px 0;">
+                        <strong>1天前</strong> - 新合作夥伴加入
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🎯 快速操作</h2>
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <a href="#" class="btn">生成報告</a>
+                    <a href="#" class="btn">匯出數據</a>
+                    <a href="#" class="btn">設定提醒</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">📊 詳細報表</h2>
+            </div>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>合作夥伴</th>
+                        <th>轉換數</th>
+                        <th>收益</th>
+                        <th>狀態</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Partner A</td>
+                        <td>245</td>
+                        <td>$1,234</td>
+                        <td style="color: #27ae60;">✅ 活躍</td>
+                    </tr>
+                    <tr>
+                        <td>Partner B</td>
+                        <td>189</td>
+                        <td>$987</td>
+                        <td style="color: #27ae60;">✅ 活躍</td>
+                    </tr>
+                    <tr>
+                        <td>Partner C</td>
+                        <td>156</td>
+                        <td>$756</td>
+                        <td style="color: #f39c12;">⏳ 待審核</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <script>
+        // 簡單的互動功能
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('ByteC Dashboard loaded');
+            
+            // 為統計卡片添加hover效果
+            const statCards = document.querySelectorAll('.stat-card');
+            statCards.forEach(card => {
+                card.addEventListener('mouseenter', function() {
+                    this.style.transform = 'translateY(-5px)';
+                });
+                card.addEventListener('mouseleave', function() {
+                    this.style.transform = 'translateY(0)';
+                });
+            });
+        });
+    </script>
+</body>
+</html>

@@ -13,7 +13,7 @@ from modules.involve_asia_api import InvolveAsiaAPI
 from modules.json_to_excel import JSONToExcelConverter
 from modules.data_processor import DataProcessor
 from modules.feishu_uploader import FeishuUploader
-from modules.email_sender import EmailSender
+from agents.data_output_agent.email_sender import EmailSender
 from modules.scheduler import ReportScheduler
 from modules.bytec_report_generator import ByteCReportGenerator
 from utils.logger import print_step, log_error
@@ -1170,6 +1170,10 @@ def create_parser():
                        help='立即执行一次定时任务（测试用）')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='显示详细日志')
+    parser.add_argument('--stats-only', action='store_true',
+                       help='只顯示統計信息，不獲取新數據')
+    parser.add_argument('--limit', type=int, default=None,
+                       help='限制獲取的總數據量 (例如: 1000)')
     
     return parser
 
@@ -1270,8 +1274,8 @@ def main():
         from datetime import timedelta
         target_date = (datetime.now() - timedelta(days=args.days_ago)).strftime('%Y-%m-%d')
         args.start_date = target_date
-        args.end_date = target_date
-        print(f"📅 使用相对日期参数: --days-ago {args.days_ago} → {target_date}")
+        args.end_date = target_date  # 設置相同的日期，確保只拉取該天的數據
+        print(f"📅 使用相对日期参数: --days-ago {args.days_ago} → {target_date} (只拉取該天數據)")
         sys.stdout.flush()
     
     # 获取API配置

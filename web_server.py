@@ -270,7 +270,7 @@ def run_weekly_reporter():
                     env=env,
                     stdout=subprocess.PIPE,  # 捕获输出用于日志记录
                     stderr=subprocess.STDOUT,  # 合并错误到标准输出
-                    timeout=3540  # 59分钟超时，最大化利用Cloud Run的1小时限制
+                    timeout=5400  # 90分钟超时，确保有足够时间完成所有步骤包括邮件发送
                 )
                 
                 # 输出执行结果到日志
@@ -472,7 +472,7 @@ def status():
             "end_date": "YYYY-MM-DD format",
             "days_ago": "Number of days ago (integer, overrides start_date/end_date)",
             "limit": "Maximum number of records (integer)",
-            "partner": "Single partner name (e.g., 'YueMeng', 'all')",
+            "partner": "Single partner name (e.g., 'DeepLeaper', 'all')",
             "output": "Custom output filename",
             "api_only": "Only execute API data fetching (boolean)",
             "convert_only": "Only execute JSON to Excel conversion (string: JSON file path)",

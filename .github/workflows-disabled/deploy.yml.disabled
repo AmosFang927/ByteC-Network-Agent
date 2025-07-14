@@ -1,4 +1,4 @@
-name: Deploy WeeklyReporter to GCP Cloud Run
+name: Deploy ByteC-Network-Agent to GCP Cloud Run
 
 on:
   push:
@@ -9,12 +9,12 @@ on:
 
 env:
   PROJECT_ID: solar-idea-463423-h8
-  SERVICE_ACCOUNT: weeklyreporter@solar-idea-463423-h8.iam.gserviceaccount.com
+  SERVICE_ACCOUNT: bytec-network-agent@solar-idea-463423-h8.iam.gserviceaccount.com
   REGION: asia-southeast1  # 更新为新加坡区域
-  SERVICE_NAME: weeklyreporter
+  SERVICE_NAME: bytec-network-agent
   POSTBACK_SERVICE_NAME: bytec-public-postback
-  IMAGE: asia-southeast1-docker.pkg.dev/solar-idea-463423-h8/weeklyreporter/app
-  POSTBACK_IMAGE: asia-southeast1-docker.pkg.dev/solar-idea-463423-h8/weeklyreporter/postback
+  IMAGE: asia-southeast1-docker.pkg.dev/solar-idea-463423-h8/bytec-network-agent/app
+  POSTBACK_IMAGE: asia-southeast1-docker.pkg.dev/solar-idea-463423-h8/bytec-network-agent/postback
 
 jobs:
   # 代码质量检查和测试
@@ -54,7 +54,7 @@ jobs:
         cd postback_system && python -c "import main; print('✅ Postback module import successful')"
         echo "✅ 基础测试完成"
 
-  # 构建和部署 WeeklyReporter 主服务
+  # 构建和部署 ByteC-Network-Agent 主服务
   build-deploy-main:
     needs: test
     runs-on: ubuntu-latest
@@ -98,14 +98,14 @@ jobs:
     - name: Create Artifact Registry repository (if needed)
       run: |
         echo "📦 创建 Artifact Registry 仓库..."
-        gcloud artifacts repositories create weeklyreporter \
+        gcloud artifacts repositories create bytec-network-agent \
           --repository-format=docker \
           --location=${{ env.REGION }} \
-          --description="WeeklyReporter Docker images" || echo "✅ 仓库已存在"
+          --description="ByteC-Network-Agent Docker images" || echo "✅ 仓库已存在"
 
     - name: Build Docker Image
       run: |
-        echo "🏗️ 构建 WeeklyReporter Docker 镜像..."
+        echo "🏗️ 构建 ByteC-Network-Agent Docker 镜像..."
         IMAGE_TAG="${{ env.IMAGE }}:${{ github.sha }}"
         IMAGE_LATEST="${{ env.IMAGE }}:latest"
         
@@ -128,7 +128,7 @@ jobs:
 
     - name: Deploy to Cloud Run
       run: |
-        echo "🚀 部署 WeeklyReporter 到 Cloud Run..."
+        echo "🚀 部署 ByteC-Network-Agent 到 Cloud Run..."
         SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
         gcloud run deploy ${{ env.SERVICE_NAME }} \
           --image ${{ env.IMAGE_TAG }} \
@@ -145,7 +145,7 @@ jobs:
           --set-env-vars "TZ=Asia/Singapore,GIT_SHA=${{ github.sha }},DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
           --tag sha-${SHORT_SHA} \
           --quiet
-        echo "✅ WeeklyReporter 部署完成"
+        echo "✅ ByteC-Network-Agent 部署完成"
 
     - name: Get Service Info and Health Check
       run: |
@@ -156,7 +156,7 @@ jobs:
           --format 'value(status.url)')
         
         echo ""
-        echo "🎉 WeeklyReporter 部署结果:"
+        echo "🎉 ByteC-Network-Agent 部署结果:"
         echo "🔗 Service URL: $SERVICE_URL"
         echo "🏷️  Image Tag: ${{ env.IMAGE_TAG }}"
         echo "🔄 Git SHA: ${{ github.sha }}"
@@ -181,7 +181,7 @@ jobs:
         fi
         
         echo ""
-        echo "📝 WeeklyReporter 可用端点:"
+        echo "📝 ByteC-Network-Agent 可用端点:"
         echo "  - 健康检查: curl $SERVICE_URL/"
         echo "  - 状态检查: curl $SERVICE_URL/status"
         echo "  - 手动触发: curl -X POST $SERVICE_URL/run"
@@ -313,7 +313,7 @@ jobs:
       run: |
         echo "🚦 更新流量到最新版本..."
         
-        # 更新 WeeklyReporter 流量
+        # 更新 ByteC-Network-Agent 流量
         gcloud run services update-traffic ${{ env.SERVICE_NAME }} \
           --to-latest \
           --region ${{ env.REGION }} \
@@ -331,8 +331,8 @@ jobs:
       run: |
         echo "🧹 清理旧版本..."
         
-        # 清理 WeeklyReporter 旧版本
-        echo "清理 WeeklyReporter 旧版本..."
+        # 清理 ByteC-Network-Agent 旧版本
+        echo "清理 ByteC-Network-Agent 旧版本..."
         gcloud run revisions list \
           --service ${{ env.SERVICE_NAME }} \
           --region ${{ env.REGION }} \
@@ -378,7 +378,7 @@ jobs:
           --region ${{ env.REGION }} \
           --format 'value(status.url)')
         
-        echo "📊 WeeklyReporter 服务:"
+        echo "📊 ByteC-Network-Agent 服务:"
         echo "  🔗 URL: $MAIN_SERVICE_URL"
         echo "  📍 区域: ${{ env.REGION }}"
         echo "  ⏰ 时区: Asia/Singapore (GMT+8)"
@@ -421,7 +421,7 @@ jobs:
       run: |
         echo "🏗️ 构建预览镜像 (PR #${{ github.event.number }})..."
         
-        # 构建 WeeklyReporter 预览镜像
+        # 构建 ByteC-Network-Agent 预览镜像
         PREVIEW_TAG="${{ env.IMAGE }}:pr-${{ github.event.number }}-${{ github.sha }}"
         docker build -f Dockerfile.cloudrun \
           -t $PREVIEW_TAG \
@@ -436,6 +436,6 @@ jobs:
           postback_system/
         
         echo "✅ 预览镜像构建完成:"
-        echo "  - WeeklyReporter: $PREVIEW_TAG"
+        echo "  - ByteC-Network-Agent: $PREVIEW_TAG"
         echo "  - Postback: $POSTBACK_PREVIEW_TAG"
         echo "ℹ️  注意: 预览镜像已构建但未部署" 

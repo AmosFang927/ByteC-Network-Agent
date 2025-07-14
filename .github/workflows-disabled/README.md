@@ -22,7 +22,7 @@ mv .github/workflows-disabled/deploy.yml.disabled .github/workflows/deploy.yml
 ```
 
 ## 🚀 當前部署方式
-- WeeklyReporter主服務: `./deploy_web_ui.sh`
+- ByteC-Network-Agent主服務: `./deploy_web_ui.sh`
 - Postback系統: `./deploy_updated_to_cloudrun.sh`
 - 其他服務: 使用對應的部署腳本
 
