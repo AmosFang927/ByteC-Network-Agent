@@ -4,6 +4,15 @@ __pycache__/
 *$py.class
 *.so
 
+# Debug数据文件 - 防止大文件提交
+debug_api_data/api_raw_data*.json
+debug_api_data/*MB*.json
+*_raw_data_*.json
+
+# 大文件 (>50MB)
+*.large
+*.big
+
 # 分布式包
 .Python
 build/
