@@ -119,3 +119,7 @@ pandasai_deployment_info.txt
 enhanced_dashboard_deployment_info.txt
 rector_monitor_server.pid
 last_rector_count.txt
+
+# 大文件 (>100MB) - 防止 GitHub 推送失敗
+agents/api_agent/debug_api_data/api_raw_data_*.json
+agents/api_agent/debug_api_data/*MB*.json
