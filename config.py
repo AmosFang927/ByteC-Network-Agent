@@ -118,7 +118,15 @@ EXCEL_SHEET_NAME = "Conversion Report"
 
 # 数据处理配置
 MOCKUP_MULTIPLIER = 0.9  # sale_amount调整倍数（默认90%）
-REMOVE_COLUMNS = ["payout", "base_payout", "bonus_payout"]  # 要移除的栏位
+REMOVE_COLUMNS = [
+    "payout", 
+    "base_payout", 
+    "bonus_payout",
+    "USD Payout",           # 屏蔽USD Payout欄位
+    "Partner ID",           # 屏蔽合作夥伴ID欄位
+    "Platform ID",          # 屏蔽平台ID欄位
+    "Created At"            # 屏蔽創建時間欄位
+]  # 要移除的栏位
 
 # =============================================================================
 # ByteC 报表配置
