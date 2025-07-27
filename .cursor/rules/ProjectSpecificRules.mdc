@@ -1,0 +1,191 @@
+# 🎯 ByteC Network Agent 專案特定規則
+
+## 📊 專案結構約定
+
+### Agent 目錄結構
+```
+agents/
+├── api_agent/          # API 數據收集
+├── postback_agent/     # Postback 回傳處理
+├── data_dmp_agent/     # 數據管理平台
+├── reporter_agent/     # 報表生成
+├── dashboard_agent/    # 前端展示
+└── spider_agent/       # 網頁爬蟲
+```
+
+### 核心檔案規範
+- **database_manager.py**: 數據庫操作統一管理
+- **main.py**: Agent 主要執行入口
+- **config.py**: 全局配置中心
+- **requirements.txt**: 依賴管理
+
+## 🔧 技術棧特定規則
+
+### Python 開發規範
+- **版本**: Python 3.8+
+- **異步**: 使用 `asyncio` 和 `asyncpg`
+- **風格**: 遵循 PEP 8，中文註釋
+- **測試**: 每個新功能需要對應測試
+
+### 數據庫操作規範
+```python
+# ✅ 正確：使用異步連接池
+async with self.db_pool.acquire() as conn:
+    async with conn.transaction():
+        result = await conn.fetch(query, *params)
+
+# ❌ 錯誤：同步操作或未使用事務
+result = conn.execute(query)
+```
+
+### API 調用規範
+```python
+# ✅ 正確：包含重試和限制機制
+@retry_with_backoff
+async def fetch_api_data(self):
+    await asyncio.sleep(REQUEST_DELAY)
+    # API 調用邏輯
+
+# ❌ 錯誤：無限制的直接調用
+response = requests.get(url)
+```
+
+## 📋 配置管理規則
+
+### config.py 結構要求
+```python
+# 必須包含的配置區塊
+DATABASE_CONFIG = {}        # 數據庫配置
+API_SECRETS = {}           # API 密鑰
+PARTNER_SOURCE_MAPPING = {} # 合作夥伴映射
+MOCKUP_MULTIPLIERS = {}    # 模擬倍數
+REQUEST_DELAY = 0.5        # 請求間隔
+```
+
+### 環境變數管理
+- 敏感信息使用環境變數
+- 提供 `.env.example` 範例檔案
+- 使用 `python-dotenv` 載入配置
+
+## 🎯 Agent 特定規則
+
+### Data DMP Agent 規則
+- **數據源分離**: 使用 `data_source_separation_enabled` 配置
+- **表格管理**: API 數據存入 `conversions_api`，Postback 存入 `conversions_postback`
+- **批次處理**: 使用配置的 `BATCH_SIZE` 進行批次操作
+- **去重機制**: 基於 `transaction_id` 進行數據去重
+
+### Reporter Agent 規則
+- **合作夥伴映射**: 統一使用 `config.py` 中的映射配置
+- **Excel 生成**: 使用 `openpyxl` 並支持中文
+- **數據查詢**: 優先使用優化的查詢邏輯
+- **錯誤處理**: 提供詳細的中文錯誤信息
+
+### Dashboard Agent 規則
+- **前端框架**: 使用 Streamlit
+- **緩存機制**: 實施適當的數據緩存
+- **響應性**: 確保良好的用戶體驗
+- **數據更新**: 實時或定期更新顯示數據
+
+## 🔍 Debug 和測試規則
+
+### 日誌規範
+```python
+# ✅ 正確：結構化日誌
+logger.info(f"處理 {partner} 合作夥伴數據，日期範圍: {start_date} - {end_date}")
+
+# ❌ 錯誤：無結構的日誌
+print("processing data")
+```
+
+### 測試檔案規範
+- 測試檔案名稱: `test_*.py`
+- 測試函數名稱: `test_功能名稱`
+- 包含正面和負面測試案例
+- 使用模擬數據避免影響生產環境
+
+### 命令執行規範
+```bash
+# ✅ 必須使用的格式
+PYTHONUNBUFFERED=1 python agents/data_dmp_agent/main.py --query --partner MP
+
+# ❌ 禁止的格式
+python agents/data_dmp_agent/main.py --query
+```
+
+## 📊 數據處理規則
+
+### 合作夥伴映射規則
+- **MP 映射**: `aff_sub LIKE 'MP%'` 且來源為 'RAMPUP'
+- **MKK 映射**: 明確的合作夥伴標識
+- **配置驅動**: 所有映射邏輯基於 `config.py`
+
+### 數據驗證規則
+```python
+# 必須驗證的字段
+required_fields = ['transaction_id', 'partner', 'conversion_time', 'usd_sale_amount']
+
+# 數據清理規則
+- 移除重複的 transaction_id
+- 驗證日期格式
+- 確保數值字段的有效性
+```
+
+### Excel 報表規則
+- **檔案命名**: `{partner}_{start_date}_{end_date}_report.xlsx`
+- **工作表結構**: 包含原始數據和匯總統計
+- **格式化**: 使用適當的數字格式和中文標題
+- **欄位遮罩**: 根據需求遮罩敏感欄位
+
+## 🚨 安全和性能規則
+
+### API 密鑰管理
+- 絕不在代碼中硬編碼密鑰
+- 使用環境變數或安全的配置文件
+- 定期輪換 API 密鑰
+- 測試和生產環境使用不同密鑰
+
+### 性能最佳實踐
+- 使用連接池管理數據庫連接
+- 實施適當的批次大小
+- 避免 N+1 查詢問題
+- 監控和記錄性能指標
+
+### 錯誤處理標準
+```python
+# ✅ 正確：完整的錯誤處理
+try:
+    result = await self.process_data()
+    logger.info(f"成功處理 {len(result)} 筆數據")
+except DatabaseError as e:
+    logger.error(f"數據庫錯誤: {e}")
+    raise
+except Exception as e:
+    logger.error(f"未預期的錯誤: {e}")
+    raise
+```
+
+## 🎯 開發流程規則
+
+### Git 使用規範
+- **分支命名**: `feature/功能名稱`, `bugfix/問題描述`
+- **提交信息**: 使用中文描述具體修改
+- **代碼審查**: 大型修改需要進行審查
+
+### 部署規則
+- 使用 Docker 容器化部署
+- 環境配置通過環境變數管理
+- 提供健康檢查端點
+- 實施滾動更新策略
+
+### 監控和維護
+- 設置適當的日誌等級
+- 監控關鍵性能指標
+- 定期備份重要數據
+- 建立故障恢復流程
+
+**實施承諾**: 嚴格遵循這些專案特定規則，確保代碼品質和系統穩定性！
+description:
+globs:
+alwaysApply: false
+---

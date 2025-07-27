@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-tags me-2"></i>Offer Performance Report
+        </h1>
+        <p class="text-muted">View offer-level conversion performance and revenue analysis</p>
+    </div>
+</div>
+
+<!-- Filter Section -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label for="date_range" class="form-label">Date Range</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
+                    <input type="text" class="form-control" id="date_range" 
+                           value="2025-07-07 to 2025-07-14" readonly
+                           style="background-color: white; cursor: pointer;">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label for="offer_filter" class="form-label">Offer Category</label>
+                <select class="form-select" id="offer_filter">
+                    <option value="">All Offers</option>
+                    <option value="E-commerce">E-commerce</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Gaming">Gaming</option>
+                    <option value="Travel">Travel</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="partner_filter" class="form-label">Partner</label>
+                <select class="form-select" id="partner_filter">
+                    <option value="">All Partners</option>
+                    <option value="ByteC">ByteC</option>
+                    <option value="DeepLeaper">DeepLeaper</option>
+                    <option value="RAMPUP">RAMPUP</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary">
+                        <i class="fas fa-search me-1"></i>Filter
+                    </button>
+                    <button type="button" class="btn btn-success">
+                        <i class="fas fa-download me-1"></i>Export
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Metrics -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="card bg-primary text-white mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small">Active Offers</div>
+                        <div class="fs-4 fw-bold">15</div>
+                    </div>
+                    <i class="fas fa-tags fa-2x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card bg-success text-white mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small">Total Conversions</div>
+                        <div class="fs-4 fw-bold">1,245</div>
+                    </div>
+                    <i class="fas fa-exchange-alt fa-2x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card bg-warning text-white mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small">Total Revenue</div>
+                        <div class="fs-4 fw-bold">$45.2K</div>
+                    </div>
+                    <i class="fas fa-dollar-sign fa-2x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card bg-info text-white mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small">Avg. Conversion Value</div>
+                        <div class="fs-4 fw-bold">$36.3</div>
+                    </div>
+                    <i class="fas fa-calculator fa-2x opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Performing Offers -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">🎯 Offer Level Summary</h5>
+        <small class="text-muted">Sorted by priority - Offer dimension statistics</small>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="min-width: 60px;">Rank</th>
+                        <th style="min-width: 200px;">Offer Name</th>
+                        <th style="min-width: 100px;">Category</th>
+                        <th style="min-width: 120px;">Conversion</th>
+                        <th style="min-width: 150px;">Sales Amount</th>
+                        <th style="min-width: 150px;">Estimated Earning</th>
+                        <th style="min-width: 150px;">Avg. Commission Rate</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="badge bg-warning">🥇</span></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="bg-success rounded-circle p-2 me-2" style="width: 32px; height: 32px;">
+                                    <i class="fas fa-shopping-cart text-white small"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold">TikTok Shopping Mall</div>
+                                    <small class="text-muted">ID: TT_SHOP_001</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-primary">E-commerce</span></td>
+                        <td><strong class="text-primary">687</strong></td>
+                        <td><span class="text-success fw-bold">$24,840.00</span></td>
+                        <td><span class="text-success fw-bold">$1,988.80</span></td>
+                        <td>
+                            <span class="badge bg-success">8.0%</span>
+                            <div class="progress mt-1" style="height: 4px;">
+                                <div class="progress-bar bg-success" style="width: 80%"></div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-secondary">🥈</span></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="bg-info rounded-circle p-2 me-2" style="width: 32px; height: 32px;">
+                                    <i class="fas fa-credit-card text-white small"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold">Digital Bank Plus</div>
+                                    <small class="text-muted">ID: DB_PLUS_002</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-info">Finance</span></td>
+                        <td><strong class="text-primary">312</strong></td>
+                        <td><span class="text-success fw-bold">$11,232.00</span></td>
+                        <td><span class="text-success fw-bold">$898.56</span></td>
+                        <td>
+                            <span class="badge bg-warning">7.2%</span>
+                            <div class="progress mt-1" style="height: 4px;">
+                                <div class="progress-bar bg-warning" style="width: 72%"></div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-secondary">🥉</span></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="bg-warning rounded-circle p-2 me-2" style="width: 32px; height: 32px;">
+                                    <i class="fas fa-gamepad text-white small"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold">Mobile Game Pro</div>
+                                    <small class="text-muted">ID: MG_PRO_003</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-warning">Gaming</span></td>
+                        <td><strong class="text-primary">158</strong></td>
+                        <td><span class="text-success fw-bold">$5,688.00</span></td>
+                        <td><span class="text-success fw-bold">$455.04</span></td>
+                        <td>
+                            <span class="badge bg-info">6.5%</span>
+                            <div class="progress mt-1" style="height: 4px;">
+                                <div class="progress-bar bg-info" style="width: 65%"></div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge bg-light text-dark">4</span></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="bg-secondary rounded-circle p-2 me-2" style="width: 32px; height: 32px;">
+                                    <i class="fas fa-plane text-white small"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold">Travel Booking Hub</div>
+                                    <small class="text-muted">ID: TB_HUB_004</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-secondary">Travel</span></td>
+                        <td><strong class="text-primary">88</strong></td>
+                        <td><span class="text-success fw-bold">$3,168.00</span></td>
+                        <td><span class="text-success fw-bold">$253.44</span></td>
+                        <td>
+                            <span class="badge bg-danger">5.8%</span>
+                            <div class="progress mt-1" style="height: 4px;">
+                                <div class="progress-bar bg-danger" style="width: 58%"></div>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+<!-- Data Source Information -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Data Source:</strong> Offer performance data retrieved from DMP-agent via Google SQL. 
+            Conversion rates and revenue metrics are calculated in real-time.
+        </div>
+    </div>
+</div>
+
+<script>
+// Initialize date range picker
+$(document).ready(function() {
+    // Get current date values
+    var currentStartDate = $('#start_date').val() || moment().subtract(6, 'days').format('YYYY-MM-DD');
+    var currentEndDate = $('#end_date').val() || moment().format('YYYY-MM-DD');
+    
+    $('#date_range').daterangepicker({
+        startDate: moment(currentStartDate),
+        endDate: moment(currentEndDate),
+        opens: 'left',
+        locale: {
+            format: 'YYYY-MM-DD',
+            separator: ' to ',
+            applyLabel: 'Apply',
+            cancelLabel: 'Cancel',
+            fromLabel: 'From',
+            toLabel: 'To',
+            customRangeLabel: 'Custom Range',
+            weekLabel: 'W',
+            daysOfWeek: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
+            monthNames: ['January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December']
+        },
+        ranges: {
+           'Today': [moment(), moment()],
+           'Yesterday': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+           'Last 7 Days': [moment().subtract(6, 'days'), moment()],
+           'Last 30 Days': [moment().subtract(29, 'days'), moment()],
+           'This Month': [moment().startOf('month'), moment().endOf('month')],
+           'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+        }
+    }, function(start, end, label) {
+        $('#start_date').val(start.format('YYYY-MM-DD'));
+        $('#end_date').val(end.format('YYYY-MM-DD'));
+        $('#date_range').val(start.format('YYYY-MM-DD') + ' to ' + end.format('YYYY-MM-DD'));
+        
+        // Show loading state
+        showLoadingState();
+        
+        // Auto submit form to get new data
+        $('#filterForm').submit();
+    });
+    
+
+});
+
+
+
+// 显示加载状态
+function showLoadingState() {
+    // 在页面顶部显示加载提示
+    $('body').prepend('<div id="loadingOverlay" class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style="background-color: rgba(255,255,255,0.8); z-index: 9999;"><div class="text-center"><div class="spinner-border text-primary mb-2" role="status"></div><div>正在加載數據...</div></div></div>');
+}
+
+// 查看Offer详情
+function viewOfferDetails(offerId) {
+    alert(`View detailed analytics for Offer: ${offerId}\n\nThis will show conversion funnel, traffic sources, and performance metrics.`);
+}
+
+// Set current page as active in navigation
+document.addEventListener('DOMContentLoaded', function() {
+    const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
+    navLinks.forEach(link => link.classList.remove('active'));
+    
+    const offerLink = document.querySelector('a[href="/offer"]');
+    if (offerLink) {
+        offerLink.classList.add('active');
+    }
+});
+</script>
+
+<style>
+.btn-xs {
+    padding: 0.125rem 0.25rem;
+    font-size: 0.75rem;
+}
+</style>
+{% endblock %} 

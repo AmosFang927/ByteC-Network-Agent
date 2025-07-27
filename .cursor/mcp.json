@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "mcp-feedback-enhanced": {
+      "command": "/Users/amosfang/ByteC-Network-Agent/venv/bin/python",
+      "args": [
+        "-m",
+        "mcp_feedback_enhanced"
+      ],
+      "timeout": 600,
+      "env": {
+        "MCP_DEBUG": "true",
+        "MCP_CLI_MODE": "true",
+        "MCP_LANGUAGE": "zh-TW"
+      },
+      "autoApprove": [
+        "interactive_feedback"
+      ]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ],
+      "timeout": 600,
+      "env": {
+        "MCP_DEBUG": "true"
+      }
+    }
+  }
+}

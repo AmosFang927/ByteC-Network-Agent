@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-tachometer-alt me-2"></i>Overview Dashboard
+        </h1>
+        <p class="text-muted">ByteC Network Agent Performance Overview</p>
+    </div>
+</div>
+
+<!-- 关键指标卡片 -->
+<div class="row mb-4" id="metricsCards">
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-2">Total Conversions</h6>
+                        <h3 class="mb-0" id="totalConversions">-</h3>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-exchange-alt fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-2">Total Sales</h6>
+                        <h3 class="mb-0" id="totalSales">-</h3>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-dollar-sign fa-2x text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-2">Total Payout</h6>
+                        <h3 class="mb-0" id="totalPayout">-</h3>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-coins fa-2x text-warning"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-2">Avg. Commission Rate</h6>
+                        <h3 class="mb-0" id="avgCommissionRate">-</h3>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-chart-line fa-2x text-info"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 图表区域 -->
+<div class="row mb-4">
+    <!-- 每日趋势图 -->
+    <div class="col-lg-8 mb-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-line me-2"></i>Daily Trend
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="dailyTrendChart" height="120"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 小时分布图 -->
+    <div class="col-lg-4 mb-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-clock me-2"></i>24-Hour Distribution
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="hourlyDistributionChart" height="160"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 详细数据表格 -->
+<div class="row">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-table me-2"></i>Detailed Data
+                </h5>
+                <div>
+                    <select class="form-select form-select-sm" id="partnerFilter">
+                        <option value="">All Partners</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="summaryTable">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Conversions</th>
+                                <th>Sales</th>
+                                <th>Payout</th>
+                                <th>Avg. Commission Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summaryTableBody">
+                            <!-- 数据将通过JavaScript动态填充 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+$(document).ready(function() {
+    // 初始化总览页面
+    SummaryDashboard.init();
+    
+    // Set current page navigation status
+    $('.navbar-nav .nav-link').removeClass('active');
+    $('a[href="{{ url_for('summary_page') }}"]').addClass('active');
+});
+
+// Overview Dashboard class
+const SummaryDashboard = {
+    data: null,
+    charts: {},
+    
+    init: function() {
+        this.loadData();
+        this.setupEventHandlers();
+    },
+    
+    loadData: function() {
+        const params = Dashboard.getDateRangeParams();
+        const partnerFilter = $('#partnerFilter').val();
+        
+        if (partnerFilter) {
+            params.partner_id = partnerFilter;
+        }
+        
+        Dashboard.showLoading();
+        
+        $.ajax({
+            url: '/api/summary',
+            data: params,
+            success: (response) => {
+                Dashboard.hideLoading();
+                if (response.status === 'success') {
+                    this.data = response.data;
+                    this.renderData();
+                } else {
+                    Dashboard.showError('数据加载失败: ' + response.message);
+                }
+            },
+            error: (xhr) => {
+                Dashboard.hideLoading();
+                Dashboard.showError('请求失败');
+            }
+        });
+    },
+    
+    renderData: function() {
+        if (!this.data) return;
+        
+        this.renderMetrics();
+        this.renderCharts();
+        this.renderTable();
+    },
+    
+    renderMetrics: function() {
+        const metrics = this.data.metrics || {};
+        
+        $('#totalConversions').text(this.formatNumber(metrics.total_conversions || 0));
+        $('#totalSales').text('$' + this.formatCurrency(metrics.total_sales || 0));
+        $('#totalPayout').text('$' + this.formatCurrency(metrics.total_payout || 0));
+        
+        // Calculate and display commission rate
+        const commissionRate = (metrics.total_sales && metrics.total_sales > 0) 
+            ? ((metrics.total_payout / metrics.total_sales) * 100).toFixed(2) 
+            : 0;
+        $('#avgCommissionRate').text(commissionRate + '%');
+    },
+    
+    renderCharts: function() {
+        // 每日趋势图
+        const dailyData = this.data.daily_trend || [];
+        if (dailyData.length > 0) {
+            this.charts.dailyTrend = Charts.createDailyTrendChart('dailyTrendChart', dailyData);
+        }
+        
+        // 小时分布图
+        const hourlyData = this.data.hourly_trend || [];
+        if (hourlyData.length > 0) {
+            this.charts.hourlyDistribution = Charts.createHourlyDistributionChart('hourlyDistributionChart', hourlyData);
+        }
+    },
+    
+    renderTable: function() {
+        const dailyData = this.data.daily_trend || [];
+        const tbody = $('#summaryTableBody');
+        tbody.empty();
+        
+        dailyData.forEach(row => {
+            const commissionRate = (row.total_sales && row.total_sales > 0) 
+                ? ((row.total_payout / row.total_sales) * 100).toFixed(2) 
+                : '0.00';
+            
+            const tr = $('<tr>' +
+                '<td>' + row.date + '</td>' +
+                '<td>' + this.formatNumber(row.conversions) + '</td>' +
+                '<td>$' + this.formatCurrency(row.total_sales) + '</td>' +
+                '<td>$' + this.formatCurrency(row.total_payout) + '</td>' +
+                '<td>' + commissionRate + '%</td>' +
+            '</tr>');
+            tbody.append(tr);
+        });
+    },
+    
+    setupEventHandlers: function() {
+        // Partner filter
+        $('#partnerFilter').on('change', () => {
+            this.loadData();
+        });
+    },
+    
+    formatNumber: function(num) {
+        return new Intl.NumberFormat('en-US').format(num || 0);
+    },
+    
+    formatCurrency: function(amount) {
+        return new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(amount || 0);
+    }
+};
+</script>
+{% endblock %} 

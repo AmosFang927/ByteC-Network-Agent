@@ -1,0 +1,174 @@
+# 🏆 Cursor 開發 12 條黃金規則
+
+## 📋 基於 Cursor CTO & Ryo Lu 的專業建議
+
+### 規則 1: 專案啟動階段規劃
+**在專案啟動時，先設定 5–10 條明確專案規則，說明專案結構、技術棧和開發限制。**
+
+實施要點：
+- 建立 `.cursor/rules/` 目錄結構
+- 明確定義技術棧：Python、PostgreSQL、FastAPI 等
+- 設定開發限制：測試覆蓋率、代碼風格、性能要求
+- 建立 ByteC Network Agent 專案特定規則
+
+### 規則 2: 具體明確的 Prompt 撰寫
+**撰寫 prompt 時務必具體，明確描述技術棧、功能需求、預期輸出及邊界條件。**
+
+實施標準：
+```
+✅ 具體 Prompt 範例：
+"使用 Python asyncpg 修改 agents/data_dmp_agent/database_manager.py，
+加入按日期範圍刪除 conversions_api 表數據的功能，
+需要包含安全檢查和事務處理"
+
+❌ 模糊 Prompt：
+"幫我修改數據庫功能"
+```
+
+### 規則 3: 單檔案專注原則
+**AI 協作過程中，一次專注於一個檔案，完成生成、測試與審查後再進行下一檔。**
+
+執行流程：
+1. 選定單一目標檔案
+2. 完成代碼生成
+3. 進行功能測試
+4. 代碼審查與優化
+5. 確認無誤後進行下一檔案
+
+### 規則 4: 測試先行開發模式
+**優先編寫測試代碼，再生成應用程式碼，直到所有測試通過才完成該任務。**
+
+TDD 流程：
+```python
+# 1. 先寫測試
+def test_delete_data_by_date_range():
+    # 測試數據刪除功能
+    assert delete_data_by_date_range('2024-07-15', '2024-07-16') == True
+
+# 2. 再寫實現
+def delete_data_by_date_range(start_date, end_date):
+    # 實現刪除邏輯
+    pass
+```
+
+### 規則 5: 主動審查與修正
+**對 AI 產出進行主動審查與修正，手動修改後讓 Cursor 參考正確範例以強化學習。**
+
+審查要點：
+- 檢查代碼邏輯正確性
+- 驗證錯誤處理機制
+- 確認性能和安全性
+- 手動修正後讓 AI 學習正確模式
+
+### 規則 6: 範圍註記使用
+**善用範圍註記（@ file, @ folder, @ git），限定 AI 的工作範圍，避免干擾不相關檔案。**
+
+標準用法：
+```
+@agents/data_dmp_agent/database_manager.py  # 特定檔案
+@agents/reporter_agent/  # 特定目錄
+@git  # Git 變更範圍
+```
+
+### 規則 7: 設計文件組織
+**把設計文件和 checklist 放入 .cursor/ 目錄，讓 AI 可隨時取得專案脈絡。**
+
+目錄結構：
+```
+.cursor/
+├── rules/
+│   ├── GoldenRulesForCursor.mdc
+│   ├── ProjectSpecificRules.mdc
+│   └── CommunicationAndLogging.mdc
+├── docs/
+│   ├── architecture.md
+│   ├── api_design.md
+│   └── database_schema.md
+└── checklists/
+    ├── deployment.md
+    └── testing.md
+```
+
+### 規則 8: 從編輯學習優先
+**當 AI 產出錯誤時，優先直接修改代碼，Cursor 會從編輯學習，比口頭解釋效率高。**
+
+最佳實踐：
+- 發現錯誤時直接編輯修正
+- 讓 Cursor 觀察修改模式
+- 避免冗長的口頭說明
+- 依靠示例引導 AI 學習
+
+### 規則 9: Chat History 善用
+**利用 chat history 快速疊代 prompt，避免每次都重新開始對話。**
+
+疊代策略：
+- 保持對話連續性
+- 參考之前的成功範例
+- 漸進式改善 prompt
+- 建立有效的對話模板
+
+### 規則 10: 模型選擇策略
+**根據需求切換 AI 模型：需要精度時選 Gemini，需要廣泛思考時選 Claude。**
+
+選擇指南：
+- **Gemini**: 精確的代碼生成、Bug 修復
+- **Claude**: 架構設計、廣泛分析、創意解決方案
+- **GPT-4**: 平衡性能，通用開發任務
+
+### 規則 11: 規則模組化管理
+**將大型規則拆分成多條專一規則，避免單一規則過於龐大，便於維護與遵循。**
+
+模組化原則：
+```
+✅ 專一規則：
+- CommunicationAndLogging.mdc (溝通和日誌)
+- QuotaOptimizationStrategies.mdc (額度優化)
+- ProjectSpecificRules.mdc (專案特定)
+
+❌ 龐大單一規則：
+- AllRulesInOne.mdc (包含所有規則)
+```
+
+### 規則 12: 規則動態更新
+**專案結構或技術更新時，及時調整規則內容，保持規則與專案同步演進。**
+
+更新機制：
+- 定期檢查規則有效性
+- 技術棧變更時更新規則
+- 新功能開發時補充相關規則
+- 移除過時或無效的規則
+
+## 🎯 ByteC Network Agent 專案實施
+
+### 當前專案規則應用
+
+1. **技術棧明確**: Python + PostgreSQL + FastAPI
+2. **專案結構**: Multi-Agent 架構 (Reporter, DMP, Dashboard)
+3. **開發限制**: 
+   - 使用繁體中文溝通
+   - 強制 PYTHONUNBUFFERED=1
+   - 工具調用 < 15 次/對話
+4. **測試要求**: 每個新功能都需要測試驗證
+5. **代碼風格**: 遵循 PEP 8，中文註釋
+
+### 實施檢查清單
+
+每次開發任務前確認：
+- [ ] 明確定義需求和邊界
+- [ ] 選定目標檔案範圍
+- [ ] 準備或編寫測試案例
+- [ ] 設定適當的 AI 模型
+- [ ] 確認相關規則和文檔
+
+## 💡 成功實施的關鍵
+
+1. **一致性**: 嚴格遵循既定規則
+2. **漸進性**: 逐步完善和優化規則
+3. **實用性**: 規則要能實際提升開發效率
+4. **靈活性**: 根據專案需求調整規則細節
+
+**實施承諾**: 嚴格遵循這 12 條黃金規則，確保 AI 輔助開發的最佳效果！
+description:
+globs:
+alwaysApply: false
+---

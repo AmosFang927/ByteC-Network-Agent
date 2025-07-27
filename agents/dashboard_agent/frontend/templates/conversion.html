@@ -1,0 +1,627 @@
+{% extends "base.html" %}
+
+{% block additional_head %}
+<!-- SortableJS for draggable columns -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<style>
+.sortable-chosen {
+    background-color: rgba(13, 110, 253, 0.1) !important;
+}
+.sortable-ghost {
+    opacity: 0.4;
+}
+.column-drag-handle {
+    cursor: move;
+    padding: 0 5px;
+    color: #6c757d;
+}
+.column-drag-handle:hover {
+    color: #495057;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-table me-2"></i>Conversion Report
+        </h1>
+        <p class="text-muted">View comprehensive details of all conversion records from DMP-agent & Google SQL</p>
+    </div>
+</div>
+
+<!-- Key Statistics Cards -->
+<div class="row mb-4" id="statsCards">
+    <div class="col-md-3">
+        <div class="card border-primary">
+            <div class="card-body text-center">
+                <h3 class="text-primary mb-1" id="totalConversions">-</h3>
+                <p class="text-muted mb-0"><i class="fas fa-chart-line me-1"></i>Total Conversions</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-success">
+            <div class="card-body text-center">
+                <h3 class="text-success mb-1" id="totalSaleAmount">-</h3>
+                <p class="text-muted mb-0"><i class="fas fa-dollar-sign me-1"></i>Total Sale Amount</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-info">
+            <div class="card-body text-center">
+                <h3 class="text-info mb-1" id="totalCommission">-</h3>
+                <p class="text-muted mb-0"><i class="fas fa-coins me-1"></i>Total Commission</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-warning">
+            <div class="card-body text-center">
+                <h3 class="text-warning mb-1" id="avgCommissionRate">-</h3>
+                <p class="text-muted mb-0"><i class="fas fa-percentage me-1"></i>Avg. Commission Rate</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter Section -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label for="date_range" class="form-label">Date Range</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
+                    <input type="text" class="form-control" id="date_range" readonly
+                           style="background-color: white; cursor: pointer;">
+                </div>
+                <input type="hidden" id="start_date">
+                <input type="hidden" id="end_date">
+            </div>
+            <div class="col-md-4">
+                <label for="partner_select" class="form-label">Partner</label>
+                <select class="form-select" id="partner_select">
+                    <option value="">All Partners</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary" onclick="loadData()">
+                        <i class="fas fa-search me-1"></i>Filter
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="exportReport()">
+                        <i class="fas fa-download me-1"></i>Export Report
+                    </button>
+                    <button type="button" class="btn btn-info" onclick="refreshData()">
+                        <i class="fas fa-sync me-1"></i>Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Data Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            Detailed Conversion Records (All Fields)
+            <small class="text-muted ms-2">
+                <i class="fas fa-grip-vertical me-1"></i>Drag columns to reorder
+            </small>
+        </h5>
+        <div class="d-flex align-items-center gap-3">
+            <button class="btn btn-sm btn-outline-secondary" onclick="resetColumnOrder()" title="Reset column order">
+                <i class="fas fa-undo me-1"></i>Reset Order
+            </button>
+            <small class="text-muted" id="dataInfo">Loading...</small>
+            <div class="d-flex align-items-center gap-2">
+                <label for="limitSelect" class="form-label mb-0 small">Per Page:</label>
+                <select class="form-select form-select-sm" id="limitSelect" style="width: auto;">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="200">200</option>
+                </select>
+            </div>
+        </div>
+            </div>
+    <div class="card-body p-0">
+                <!-- Loading State -->
+        <div id="loadingState" class="text-center py-5">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-muted">Loading data...</p>
+            <div class="progress mx-auto" style="width: 300px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" 
+                     style="width: 0%" id="loadingProgress"></div>
+            </div>
+            <small class="text-muted mt-2" id="loadingStatus">Initializing...</small>
+        </div>
+        
+        <!-- Error State -->
+        <div id="errorState" class="text-center py-5 d-none">
+            <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+            <h5 class="text-danger">Data Loading Failed</h5>
+            <p class="text-muted" id="errorMessage">Please try again later</p>
+            <button class="btn btn-outline-primary" onclick="loadData()">Reload</button>
+        </div>
+        
+                <!-- No Data State -->
+        <div id="noDataState" class="text-center py-5 d-none">
+            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">No conversion data found</h5>
+            <p class="text-muted">Try adjusting your date range or partner filter.</p>
+        </div>
+        
+        <!-- Data Table Container - Supports horizontal scrolling -->
+        <div id="tableContainer" class="d-none" style="overflow-x: auto; max-height: 80vh; overflow-y: auto;">
+            <table class="table table-striped table-hover mb-0" id="dataTable" style="min-width: 3000px;">
+                <thead class="table-dark sticky-top">
+                    <tr id="tableHeaders">
+                        <!-- Dynamically generated headers -->
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <!-- Dynamically generated table content -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- 分页控制 -->
+    <div class="card-footer" id="paginationContainer" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <small class="text-muted" id="paginationInfo">-</small>
+            </div>
+            <nav aria-label="Page navigation">
+                <ul class="pagination pagination-sm mb-0" id="pagination">
+                    <!-- 动态生成分页 -->
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<!-- 数据源信息 -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Enhanced Data Source:</strong> This data uses the new enhanced database schema with 45+ fields including platform, partner, source, and all API parameters. Data is filtered by datetime_conversion field and partner field.
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 全局变量
+let currentPage = 1;
+let currentLimit = 100;
+let currentStartDate = '';
+let currentEndDate = '';
+let currentPartnerName = '';
+let totalPages = 0;
+
+// Disable dashboard.js auto initialization
+window.Dashboard = null;
+
+// Page initialization
+$(document).ready(function() {
+    initializeDatePicker();
+    setDefaultDates(); // Set default dates first
+    loadPartners();
+    loadData(); // Then load data
+    
+    // Limit quantity change event
+    $('#limitSelect').change(function() {
+        currentLimit = parseInt($(this).val());
+        currentPage = 1;
+        loadData();
+    });
+});
+
+// Initialize date picker
+function initializeDatePicker() {
+    $('#date_range').daterangepicker({
+        startDate: moment().subtract(6, 'days'),
+        endDate: moment(),
+        opens: 'left',
+        locale: {
+            format: 'YYYY-MM-DD',
+            separator: ' to ',
+            applyLabel: 'Apply',
+            cancelLabel: 'Cancel',
+            fromLabel: 'From',
+            toLabel: 'To',
+            customRangeLabel: 'Custom Range',
+            weekLabel: 'W',
+            daysOfWeek: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
+            monthNames: ['January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December']
+        },
+        ranges: {
+           'Today': [moment(), moment()],
+           'Yesterday': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+           'Day Before Yesterday': [moment().subtract(2, 'days'), moment().subtract(2, 'days')],
+           'Last 7 Days': [moment().subtract(6, 'days'), moment()],
+           'Last 30 Days': [moment().subtract(29, 'days'), moment()],
+           'This Month': [moment().startOf('month'), moment().endOf('month')],
+           'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+        }
+    }, function(start, end, label) {
+        updateDateRange(start, end);
+    });
+}
+
+// Set default dates
+function setDefaultDates() {
+    const start = moment().subtract(6, 'days');
+    const end = moment();
+    updateDateRange(start, end);
+}
+
+// Update date range
+function updateDateRange(start, end) {
+    currentStartDate = start.format('YYYY-MM-DD');
+    currentEndDate = end.format('YYYY-MM-DD');
+    $('#start_date').val(currentStartDate);
+    $('#end_date').val(currentEndDate);
+    $('#date_range').val(currentStartDate + ' to ' + currentEndDate);
+}
+
+// Load partner list
+async function loadPartners() {
+    try {
+        const response = await fetch('/api/enhanced/filters');
+        const result = await response.json();
+        
+        if (result.status === 'success' && result.data.partners) {
+            const select = $('#partner_select');
+            select.empty();
+            
+            result.data.partners.forEach(partner => {
+                select.append(`<option value="${partner.partner_name}">${partner.partner_name}</option>`);
+            });
+        }
+    } catch (error) {
+        console.error('Failed to load partner list:', error);
+    }
+}
+
+// Load data
+async function loadData() {
+    showLoadingState();
+    updateLoadingProgress(10, 'Connecting to database...');
+    
+    try {
+        currentPartnerName = $('#partner_select').val();
+        
+        const params = new URLSearchParams({
+            start_date: currentStartDate,
+            end_date: currentEndDate,
+            page: currentPage,
+            limit: currentLimit
+        });
+        
+        if (currentPartnerName && currentPartnerName !== 'All Partners') {
+            params.append('partner_name', currentPartnerName);
+        }
+        
+        updateLoadingProgress(30, 'Querying conversion data...');
+        
+        const response = await fetch(`/api/enhanced/conversion-report?${params}`);
+        updateLoadingProgress(60, 'Processing data...');
+        
+        const result = await response.json();
+        updateLoadingProgress(80, 'Rendering interface...');
+        
+        if (result.status === 'success') {
+            displayData(result.data);
+            updateStats(result.stats);
+            updatePagination(result.pagination);
+            updateDataInfo(result);
+            updateLoadingProgress(100, 'Loading complete');
+        } else {
+            showErrorState(result.message || 'Data loading failed');
+        }
+    } catch (error) {
+        console.error('Failed to load data:', error);
+        showErrorState('Network error, please check connection');
+    }
+}
+
+// Update loading progress
+function updateLoadingProgress(percent, status) {
+    $('#loadingProgress').css('width', percent + '%');
+    $('#loadingStatus').text(status);
+}
+
+// Display data
+function displayData(data) {
+    if (!data.records || data.records.length === 0) {
+        showNoDataState();
+        return;
+    }
+    
+    // 生成表头
+    const headers = Object.keys(data.records[0]);
+    
+    // Initialize column order if not set
+    if (originalColumnOrder.length === 0) {
+        originalColumnOrder = [...headers];
+        currentColumnOrder = [...headers];
+    }
+    
+    // Generate draggable headers
+    const headerRow = currentColumnOrder.map(header => 
+        `<th style="min-width: 150px; white-space: nowrap;" data-column="${header}">
+            <span class="column-drag-handle"><i class="fas fa-grip-vertical"></i></span>
+            ${header}
+        </th>`
+    ).join('');
+    $('#tableHeaders').html(headerRow);
+    
+    // Initialize sortable for column headers
+    initializeSortableHeaders();
+    
+    // 生成表格内容 - 按照當前列順序
+    const tbody = data.records.map(record => {
+        const cells = currentColumnOrder.map(header => {
+            let value = record[header];
+            
+            // 格式化不同类型的数据
+            if (value === null || value === undefined) {
+                value = '-';
+            } else if (header === 'usd_payout' || header === 'usd_sale_amount') {
+                // 专门针对USD字段格式化
+                value = parseFloat(value || 0).toFixed(2);
+                value = '$' + value;
+            } else if (typeof value === 'number' && (header.includes('Amount') || header.includes('Payout') || header.includes('Rate'))) {
+                value = parseFloat(value).toFixed(2);
+                if (header.includes('Amount') || header.includes('Payout')) {
+                    value = '$' + value;
+                } else if (header.includes('Rate')) {
+                    value = value + '%';
+                }
+            } else if (header.includes('Time') && value) {
+                value = moment(value).format('YYYY-MM-DD HH:mm:ss');
+            }
+            
+            return `<td style="white-space: nowrap;">${value}</td>`;
+        }).join('');
+        
+        return `<tr>${cells}</tr>`;
+    }).join('');
+    
+    $('#tableBody').html(tbody);
+    showTableState();
+}
+
+// Update statistics
+function updateStats(stats) {
+    $('#totalConversions').text(stats.total_conversions.toLocaleString());
+    $('#totalSaleAmount').text('$' + parseFloat(stats.total_sale_amount).toLocaleString('en-US', {minimumFractionDigits: 2}));
+    
+    // Calculate total commission - use provided total_commission if available, otherwise calculate
+    let totalCommission;
+    if (stats.total_commission !== undefined && stats.total_commission !== null) {
+        totalCommission = parseFloat(stats.total_commission);
+    } else {
+        // Fallback calculation: sale amount * commission rate / 100
+        totalCommission = (parseFloat(stats.total_sale_amount) * parseFloat(stats.avg_commission_rate)) / 100;
+    }
+    $('#totalCommission').text('$' + totalCommission.toLocaleString('en-US', {minimumFractionDigits: 2}));
+    
+    $('#avgCommissionRate').text(parseFloat(stats.avg_commission_rate).toFixed(2) + '%');
+}
+
+// Update pagination
+function updatePagination(pagination) {
+    currentPage = pagination.page;
+    totalPages = pagination.pages;
+    
+    $('#paginationInfo').text(`Page ${pagination.page} of ${pagination.pages} (Total ${pagination.total.toLocaleString()} records)`);
+    
+    if (pagination.pages <= 1) {
+        $('#paginationContainer').hide();
+        return;
+    }
+    
+    $('#paginationContainer').show();
+    
+    let paginationHtml = '';
+    
+    // Previous page
+    if (currentPage > 1) {
+        paginationHtml += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a></li>`;
+    }
+    
+    // 页码
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+    
+    if (startPage > 1) {
+        paginationHtml += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(1)">1</a></li>`;
+        if (startPage > 2) {
+            paginationHtml += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        paginationHtml += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+            <a class="page-link" href="#" onclick="changePage(${i})">${i}</a>
+        </li>`;
+    }
+    
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            paginationHtml += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+        paginationHtml += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${totalPages})">${totalPages}</a></li>`;
+    }
+    
+    // Next page
+    if (currentPage < totalPages) {
+        paginationHtml += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a></li>`;
+    }
+    
+    $('#pagination').html(paginationHtml);
+}
+
+// 更新数据信息
+function updateDataInfo(result) {
+    const info = `数据期间: ${currentStartDate} 至 ${currentEndDate} | Partner: ${currentPartnerName || 'All'} | 显示 ${result.data.records.length} 条记录`;
+    $('#dataInfo').text(info);
+}
+
+// 切换页面
+function changePage(page) {
+    if (page !== currentPage && page >= 1 && page <= totalPages) {
+        currentPage = page;
+        loadData();
+    }
+}
+
+// 刷新数据
+function refreshData() {
+    currentPage = 1;
+    loadData();
+}
+
+// 显示状态管理
+function showLoadingState() {
+    updateLoadingProgress(0, '初始化中...');
+    $('#loadingState').removeClass('d-none');
+    $('#errorState').addClass('d-none');
+    $('#noDataState').addClass('d-none');
+    $('#tableContainer').addClass('d-none');
+    $('#paginationContainer').hide();
+}
+
+function showErrorState(message) {
+    $('#errorMessage').text(message);
+    $('#loadingState').addClass('d-none');
+    $('#errorState').removeClass('d-none');
+    $('#noDataState').addClass('d-none');
+    $('#tableContainer').addClass('d-none');
+    $('#paginationContainer').hide();
+}
+
+function showNoDataState() {
+    $('#loadingState').addClass('d-none');
+    $('#errorState').addClass('d-none');
+    $('#noDataState').removeClass('d-none');
+    $('#tableContainer').addClass('d-none');
+    $('#paginationContainer').hide();
+}
+
+function showTableState() {
+    $('#loadingState').addClass('d-none');
+    $('#errorState').addClass('d-none');
+    $('#noDataState').addClass('d-none');
+    $('#tableContainer').removeClass('d-none');
+}
+
+// Export report functionality
+function exportReport() {
+    if (!currentStartDate || !currentEndDate) {
+        alert('Please select date range');
+        return;
+    }
+    
+    const partnerName = currentPartnerName || 'ALL';
+    
+    fetch('/api/export-report', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            start_date: currentStartDate,
+            end_date: currentEndDate,
+            partner_name: partnerName
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Report generated successfully!\n\nDetails:\n- Partner: ${data.partner_name}\n- Date Range: ${data.start_date} to ${data.end_date}\n- Total Records: ${data.total_records}\n- Total Amount: $${data.total_amount}\n\nFile has been generated and uploaded to Feishu`);
+        } else {
+            alert(`Report generation failed: ${data.error}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error occurred while generating report, please check console logs');
+    });
+}
+
+// Column order management variables
+let originalColumnOrder = [];
+let currentColumnOrder = [];
+let sortableInstance = null;
+
+// Initialize sortable headers
+function initializeSortableHeaders() {
+    const tableHeaders = document.getElementById('tableHeaders');
+    if (tableHeaders) {
+        // Destroy existing sortable instance if it exists
+        if (sortableInstance) {
+            sortableInstance.destroy();
+        }
+        
+        // Create new sortable instance
+        sortableInstance = new Sortable(tableHeaders, {
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            handle: '.column-drag-handle', // Only allow dragging by the handle
+            onEnd: function(evt) {
+                // Update column order based on new position
+                const newOrder = Array.from(tableHeaders.children).map(th => 
+                    th.getAttribute('data-column')
+                );
+                currentColumnOrder = newOrder;
+                
+                // Regenerate table body with new column order
+                refreshTableWithNewOrder();
+            }
+        });
+    }
+}
+
+// Refresh table body with new column order
+function refreshTableWithNewOrder() {
+    // Simple approach: reload the current data to apply new column order
+    // This ensures data integrity and is more reliable than manual DOM manipulation
+    loadData();
+}
+
+// Reset column order to original
+function resetColumnOrder() {
+    if (originalColumnOrder.length > 0) {
+        currentColumnOrder = [...originalColumnOrder];
+        // Reload data to apply original order
+        loadData();
+    }
+}
+
+// Set current page as active
+document.addEventListener('DOMContentLoaded', function() {
+    const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
+    navLinks.forEach(link => link.classList.remove('active'));
+    
+    const conversionLink = document.querySelector('a[href="/conversion"]');
+    if (conversionLink) {
+        conversionLink.classList.add('active');
+    }
+});
+</script>
+{% endblock %} 

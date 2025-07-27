@@ -1,0 +1,441 @@
+name: Deploy ByteC-Network-Agent to GCP Cloud Run
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # 允许手动触发
+
+env:
+  PROJECT_ID: solar-idea-463423-h8
+  SERVICE_ACCOUNT: bytec-network-agent@solar-idea-463423-h8.iam.gserviceaccount.com
+  REGION: asia-southeast1  # 更新为新加坡区域
+  SERVICE_NAME: bytec-network-agent
+  POSTBACK_SERVICE_NAME: bytec-public-postback
+  IMAGE: asia-southeast1-docker.pkg.dev/solar-idea-463423-h8/bytec-network-agent/app
+  POSTBACK_IMAGE: asia-southeast1-docker.pkg.dev/solar-idea-463423-h8/bytec-network-agent/postback
+
+jobs:
+  # 代码质量检查和测试
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r postback_system/requirements.txt
+        pip install pytest flake8
+
+    - name: Run code quality checks
+      run: |
+        echo "🔍 运行代码质量检查..."
+        # 检查 Python 语法
+        python -m py_compile main.py config.py
+        python -m py_compile modules/*.py
+        python -m py_compile postback_system/main.py postback_system/app/*.py
+        echo "✅ Python 语法检查通过"
+
+    - name: Run basic tests
+      run: |
+        echo "🧪 运行基础测试..."
+        python -c "import main; print('✅ Main module import successful')"
+        python -c "import config; print('✅ Config module import successful')"
+        cd postback_system && python -c "import main; print('✅ Postback module import successful')"
+        echo "✅ 基础测试完成"
+
+  # 构建和部署 ByteC-Network-Agent 主服务
+  build-deploy-main:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ env.PROJECT_ID }}
+
+    - name: Verify Configuration
+      run: |
+        echo "🔍 验证当前配置:"
+        echo "项目: ${{ env.PROJECT_ID }}"
+        echo "Service Account: ${{ env.SERVICE_ACCOUNT }}"
+        echo "区域: ${{ env.REGION }}"
+        echo "镜像: ${{ env.IMAGE }}"
+        echo "SHA: ${{ github.sha }}"
+        echo ""
+        echo "🔍 当前认证状态:"
+        gcloud auth list
+        echo ""
+        echo "🔍 当前项目:"
+        gcloud config get-value project
+
+    - name: Configure Docker for Artifact Registry
+      run: |
+        echo "🔧 配置 Docker 认证..."
+        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+    - name: Create Artifact Registry repository (if needed)
+      run: |
+        echo "📦 创建 Artifact Registry 仓库..."
+        gcloud artifacts repositories create bytec-network-agent \
+          --repository-format=docker \
+          --location=${{ env.REGION }} \
+          --description="ByteC-Network-Agent Docker images" || echo "✅ 仓库已存在"
+
+    - name: Build Docker Image
+      run: |
+        echo "🏗️ 构建 ByteC-Network-Agent Docker 镜像..."
+        IMAGE_TAG="${{ env.IMAGE }}:${{ github.sha }}"
+        IMAGE_LATEST="${{ env.IMAGE }}:latest"
+        
+        docker build -f Dockerfile.cloudrun \
+          -t $IMAGE_TAG \
+          -t $IMAGE_LATEST \
+          --build-arg GIT_SHA=${{ github.sha }} \
+          .
+        
+        echo "✅ 镜像构建完成"
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+        echo "IMAGE_LATEST=$IMAGE_LATEST" >> $GITHUB_ENV
+
+    - name: Push Docker Image
+      run: |
+        echo "📤 推送镜像到 Artifact Registry..."
+        docker push ${{ env.IMAGE_TAG }}
+        docker push ${{ env.IMAGE_LATEST }}
+        echo "✅ 镜像推送完成"
+
+    - name: Deploy to Cloud Run
+      run: |
+        echo "🚀 部署 ByteC-Network-Agent 到 Cloud Run..."
+        SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+        gcloud run deploy ${{ env.SERVICE_NAME }} \
+          --image ${{ env.IMAGE_TAG }} \
+          --platform managed \
+          --region ${{ env.REGION }} \
+          --allow-unauthenticated \
+          --port 8080 \
+          --memory 32Gi \
+          --cpu 8 \
+          --timeout 3600 \
+          --max-instances 3 \
+          --min-instances 0 \
+          --service-account ${{ env.SERVICE_ACCOUNT }} \
+          --set-env-vars "TZ=Asia/Singapore,GIT_SHA=${{ github.sha }},DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          --tag sha-${SHORT_SHA} \
+          --quiet
+        echo "✅ ByteC-Network-Agent 部署完成"
+
+    - name: Get Service Info and Health Check
+      run: |
+        echo "📊 获取服务信息..."
+        SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          --platform managed \
+          --region ${{ env.REGION }} \
+          --format 'value(status.url)')
+        
+        echo ""
+        echo "🎉 ByteC-Network-Agent 部署结果:"
+        echo "🔗 Service URL: $SERVICE_URL"
+        echo "🏷️  Image Tag: ${{ env.IMAGE_TAG }}"
+        echo "🔄 Git SHA: ${{ github.sha }}"
+        
+        # 健康检查
+        echo ""
+        echo "🏥 执行健康检查..."
+        sleep 10  # 等待服务启动
+        
+        # 检查根路径
+        if curl -f -s "$SERVICE_URL/" > /dev/null; then
+          echo "✅ 根路径健康检查通过"
+        else
+          echo "❌ 根路径健康检查失败"
+        fi
+        
+        # 检查状态端点
+        if curl -f -s "$SERVICE_URL/status" > /dev/null; then
+          echo "✅ 状态端点健康检查通过"
+        else
+          echo "❌ 状态端点健康检查失败"
+        fi
+        
+        echo ""
+        echo "📝 ByteC-Network-Agent 可用端点:"
+        echo "  - 健康检查: curl $SERVICE_URL/"
+        echo "  - 状态检查: curl $SERVICE_URL/status"
+        echo "  - 手动触发: curl -X POST $SERVICE_URL/run"
+
+  # 构建和部署 Postback 服务
+  build-deploy-postback:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ env.PROJECT_ID }}
+
+    - name: Configure Docker for Artifact Registry
+      run: |
+        echo "🔧 配置 Docker 认证..."
+        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+    - name: Build Postback Docker Image
+      run: |
+        echo "🏗️ 构建 Postback Docker 镜像..."
+        POSTBACK_IMAGE_TAG="${{ env.POSTBACK_IMAGE }}:${{ github.sha }}"
+        POSTBACK_IMAGE_LATEST="${{ env.POSTBACK_IMAGE }}:latest"
+        
+        docker build -f postback_system/Dockerfile.cloudrun \
+          -t $POSTBACK_IMAGE_TAG \
+          -t $POSTBACK_IMAGE_LATEST \
+          --build-arg GIT_SHA=${{ github.sha }} \
+          postback_system/
+        
+        echo "✅ Postback镜像构建完成"
+        echo "POSTBACK_IMAGE_TAG=$POSTBACK_IMAGE_TAG" >> $GITHUB_ENV
+        echo "POSTBACK_IMAGE_LATEST=$POSTBACK_IMAGE_LATEST" >> $GITHUB_ENV
+
+    - name: Push Postback Docker Image
+      run: |
+        echo "📤 推送 Postback 镜像到 Artifact Registry..."
+        docker push ${{ env.POSTBACK_IMAGE_TAG }}
+        docker push ${{ env.POSTBACK_IMAGE_LATEST }}
+        echo "✅ Postback镜像推送完成"
+
+    - name: Deploy Postback to Cloud Run
+      run: |
+        echo "🚀 部署 Postback 到 Cloud Run..."
+        SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+        gcloud run deploy ${{ env.POSTBACK_SERVICE_NAME }} \
+          --image ${{ env.POSTBACK_IMAGE_TAG }} \
+          --platform managed \
+          --region ${{ env.REGION }} \
+          --allow-unauthenticated \
+          --port 8080 \
+          --memory 2Gi \
+          --cpu 1 \
+          --timeout 300 \
+          --max-instances 5 \
+          --min-instances 0 \
+          --service-account ${{ env.SERVICE_ACCOUNT }} \
+          --set-env-vars "TZ=Asia/Singapore,STORAGE_TYPE=memory,GIT_SHA=${{ github.sha }},DEPLOY_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          --tag sha-${SHORT_SHA} \
+          --quiet
+        echo "✅ Postback 部署完成"
+
+    - name: Get Postback Service Info and Health Check
+      run: |
+        echo "📊 获取 Postback 服务信息..."
+        POSTBACK_SERVICE_URL=$(gcloud run services describe ${{ env.POSTBACK_SERVICE_NAME }} \
+          --platform managed \
+          --region ${{ env.REGION }} \
+          --format 'value(status.url)')
+        
+        echo ""
+        echo "🎉 Postback 部署结果:"
+        echo "🔗 Service URL: $POSTBACK_SERVICE_URL"
+        echo "🏷️  Image Tag: ${{ env.POSTBACK_IMAGE_TAG }}"
+        echo "🔄 Git SHA: ${{ github.sha }}"
+        
+        # 健康检查
+        echo ""
+        echo "🏥 执行 Postback 健康检查..."
+        sleep 10  # 等待服务启动
+        
+        # 检查健康端点
+        if curl -f -s "$POSTBACK_SERVICE_URL/health" > /dev/null; then
+          echo "✅ Postback 健康检查通过"
+        else
+          echo "❌ Postback 健康检查失败"
+        fi
+        
+        echo ""
+        echo "📝 Postback 可用端点:"
+        echo "  - 健康检查: curl $POSTBACK_SERVICE_URL/health"
+        echo "  - 服务信息: curl $POSTBACK_SERVICE_URL/"
+        echo "  - Postback接收: curl \"$POSTBACK_SERVICE_URL/involve/event?sub_id=test&media_id=test&click_id=test&usd_sale_amount=10.00&usd_payout=1.00\""
+
+  # 更新流量和清理
+  finalize-deployment:
+    needs: [build-deploy-main, build-deploy-postback]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ env.PROJECT_ID }}
+
+    - name: Update Traffic to Latest
+      run: |
+        echo "🚦 更新流量到最新版本..."
+        
+        # 更新 ByteC-Network-Agent 流量
+        gcloud run services update-traffic ${{ env.SERVICE_NAME }} \
+          --to-latest \
+          --region ${{ env.REGION }} \
+          --quiet
+        
+        # 更新 Postback 流量
+        gcloud run services update-traffic ${{ env.POSTBACK_SERVICE_NAME }} \
+          --to-latest \
+          --region ${{ env.REGION }} \
+          --quiet
+        
+        echo "✅ 流量更新完成"
+
+    - name: Cleanup Old Revisions
+      run: |
+        echo "🧹 清理旧版本..."
+        
+        # 清理 ByteC-Network-Agent 旧版本
+        echo "清理 ByteC-Network-Agent 旧版本..."
+        gcloud run revisions list \
+          --service ${{ env.SERVICE_NAME }} \
+          --region ${{ env.REGION }} \
+          --limit 100 \
+          --sort-by ~metadata.creationTimestamp \
+          --format "value(metadata.name)" | tail -n +4 | while read revision; do
+          if [ ! -z "$revision" ]; then
+            echo "删除旧版本: $revision"
+            gcloud run revisions delete $revision --region ${{ env.REGION }} --quiet || true
+          fi
+        done
+        
+        # 清理 Postback 旧版本
+        echo "清理 Postback 旧版本..."
+        gcloud run revisions list \
+          --service ${{ env.POSTBACK_SERVICE_NAME }} \
+          --region ${{ env.REGION }} \
+          --limit 100 \
+          --sort-by ~metadata.creationTimestamp \
+          --format "value(metadata.name)" | tail -n +4 | while read revision; do
+          if [ ! -z "$revision" ]; then
+            echo "删除旧版本: $revision"
+            gcloud run revisions delete $revision --region ${{ env.REGION }} --quiet || true
+          fi
+        done
+        
+        echo "✅ 清理完成"
+
+    - name: Deployment Summary
+      run: |
+        echo ""
+        echo "🎉 部署汇总:"
+        echo "=========================================="
+        
+        # 获取服务URLs
+        MAIN_SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          --platform managed \
+          --region ${{ env.REGION }} \
+          --format 'value(status.url)')
+        
+        POSTBACK_SERVICE_URL=$(gcloud run services describe ${{ env.POSTBACK_SERVICE_NAME }} \
+          --platform managed \
+          --region ${{ env.REGION }} \
+          --format 'value(status.url)')
+        
+        echo "📊 ByteC-Network-Agent 服务:"
+        echo "  🔗 URL: $MAIN_SERVICE_URL"
+        echo "  📍 区域: ${{ env.REGION }}"
+        echo "  ⏰ 时区: Asia/Singapore (GMT+8)"
+        echo ""
+        echo "📊 Postback 服务:"
+        echo "  🔗 URL: $POSTBACK_SERVICE_URL"
+        echo "  📍 区域: ${{ env.REGION }}"
+        echo "  ⏰ 时区: Asia/Singapore (GMT+8)"
+        echo ""
+        echo "🔄 Git SHA: ${{ github.sha }}"
+        echo "📅 部署时间: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "=========================================="
+
+  # PR 预览构建 (仅构建，不部署)
+  preview-build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ env.PROJECT_ID }}
+
+    - name: Configure Docker for Artifact Registry
+      run: |
+        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+    - name: Build Preview Images
+      run: |
+        echo "🏗️ 构建预览镜像 (PR #${{ github.event.number }})..."
+        
+        # 构建 ByteC-Network-Agent 预览镜像
+        PREVIEW_TAG="${{ env.IMAGE }}:pr-${{ github.event.number }}-${{ github.sha }}"
+        docker build -f Dockerfile.cloudrun \
+          -t $PREVIEW_TAG \
+          --build-arg GIT_SHA=${{ github.sha }} \
+          .
+        
+        # 构建 Postback 预览镜像
+        POSTBACK_PREVIEW_TAG="${{ env.POSTBACK_IMAGE }}:pr-${{ github.event.number }}-${{ github.sha }}"
+        docker build -f postback_system/Dockerfile.cloudrun \
+          -t $POSTBACK_PREVIEW_TAG \
+          --build-arg GIT_SHA=${{ github.sha }} \
+          postback_system/
+        
+        echo "✅ 预览镜像构建完成:"
+        echo "  - ByteC-Network-Agent: $PREVIEW_TAG"
+        echo "  - Postback: $POSTBACK_PREVIEW_TAG"
+        echo "ℹ️  注意: 预览镜像已构建但未部署" 

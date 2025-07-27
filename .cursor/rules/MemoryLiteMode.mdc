@@ -1,0 +1,194 @@
+# 💡 低記憶負載模式 (Memory Lite)
+
+## 🎯 模式概述
+
+當使用 Cursor 的 Memory Lite 模式時，系統會關閉長期記憶功能，需要調整工作策略以適應有限的上下文記憶。
+
+## 🔧 Memory Lite 模式優化策略
+
+### 1. 上下文自包含原則
+**每次請求都提供完整上下文**
+- 明確說明當前任務的完整背景
+- 包含所有必要的配置和設定信息
+- 避免依賴之前對話的隱含知識
+
+**實施範例**:
+```
+❌ 錯誤：繼續修改昨天的數據庫函數
+✅ 正確：修改 agents/data_dmp_agent/database_manager.py 中的
+         insert_conversions_batch 函數，需要添加錯誤處理邏輯
+```
+
+### 2. 關鍵信息前置
+**在每次請求開頭提供核心信息**
+- 專案類型：ByteC Network Agent (Multi-Agent 架構)
+- 技術棧：Python + PostgreSQL + FastAPI
+- 當前工作目標和範圍
+
+**標準模板**:
+```
+[ByteC Network Agent] 
+技術棧：Python 3.8+ + PostgreSQL + asyncpg
+當前任務：[具體描述]
+相關檔案：[明確列出]
+```
+
+### 3. 檔案路徑明確化
+**總是提供完整的檔案路徑**
+- 使用絕對路徑或從專案根目錄的相對路徑
+- 明確指定要修改的具體檔案
+- 避免模糊的檔案引用
+
+**路徑範例**:
+```
+✅ agents/data_dmp_agent/database_manager.py
+✅ agents/reporter_agent/core/report_generator.py
+✅ config.py (專案根目錄)
+❌ database_manager.py (模糊路徑)
+```
+
+### 4. 配置信息嵌入
+**在請求中直接提供必要配置**
+- 合作夥伴映射規則
+- 數據庫連接資訊 (非敏感部分)
+- API 配置要求
+
+**配置提醒**:
+```
+合作夥伴映射：MP = aff_sub LIKE 'MP%' AND source = 'RAMPUP'
+數據庫：PostgreSQL with asyncpg
+API 限制：REQUEST_DELAY = 0.5 秒
+```
+
+## 📋 Memory Lite 檢查清單
+
+### 每次請求前確認
+- [ ] 提供完整的任務背景說明
+- [ ] 明確指定技術棧和架構信息
+- [ ] 包含所有相關的檔案路徑
+- [ ] 列出重要的配置參數
+- [ ] 說明預期的輸出結果
+
+### 避免的表達方式
+- [ ] "繼續之前的工作"
+- [ ] "按照我們討論的方案"
+- [ ] "修改那個檔案"
+- [ ] "使用相同的配置"
+- [ ] "像上次一樣"
+
+## 🎯 專案特定信息庫
+
+### ByteC Network Agent 核心信息
+```
+專案架構：Multi-Agent 系統
+- API Agent: 數據收集
+- Postback Agent: 回傳處理
+- Data DMP Agent: 數據管理
+- Reporter Agent: 報表生成
+- Dashboard Agent: 前端展示
+
+核心檔案：
+- config.py: 全域配置
+- agents/*/database_manager.py: 數據庫操作
+- agents/*/main.py: Agent 主程式
+
+重要配置：
+- REQUEST_DELAY = 0.5
+- PARTNER_SOURCE_MAPPING = {MP: RAMPUP}
+- MOCKUP_MULTIPLIERS = {MP: 0.9}
+```
+
+### 常用命令格式
+```bash
+# 標準 Python 執行格式
+PYTHONUNBUFFERED=1 python agents/[agent_name]/main.py [參數]
+
+# DMP Agent 查詢
+PYTHONUNBUFFERED=1 python agents/data_dmp_agent/main.py --query --partner MP
+
+# Reporter Agent 報表
+PYTHONUNBUFFERED=1 python agents/reporter_agent/main.py --partners MP,MKK
+```
+
+## 💡 對話策略優化
+
+### 1. 批次信息提供
+**一次性提供所有相關信息**
+- 完整的需求描述
+- 相關的技術約束
+- 預期的實現方式
+
+### 2. 結構化請求
+**使用標準化的請求格式**
+```
+【任務】：[明確的任務描述]
+【檔案】：[要修改的檔案路徑]
+【技術】：[使用的技術和工具]
+【配置】：[相關配置信息]
+【期望】：[預期結果]
+```
+
+### 3. 上下文重建
+**必要時重新建立上下文**
+- 提供之前工作的簡潔總結
+- 列出當前狀態和進度
+- 明確下一步的具體目標
+
+## 🚨 Memory Lite 注意事項
+
+### 工具調用限制
+**更嚴格的工具使用策略**
+- 單次對話限制 10-12 個工具調用
+- 優先使用 grep_search 而非 codebase_search
+- 避免探索性的檔案搜索
+
+### 信息查找策略
+**預先準備關鍵信息**
+- 在請求中直接提供常用配置
+- 避免依賴 AI 記憶查找設定
+- 使用 @file 註記指定確切檔案
+
+### 錯誤處理優化
+**自包含的錯誤修復**
+- 提供完整的錯誤信息和堆疊跟踪
+- 包含相關檔案的關鍵上下文
+- 明確說明修復的目標和約束
+
+## 📊 效率提升策略
+
+### 1. 模板化請求
+**建立常用請求的模板**
+```
+[DEBUG] ByteC Agent 錯誤修復
+檔案：[specific_file.py]
+錯誤：[完整錯誤信息]
+環境：Python 3.8 + PostgreSQL + asyncpg
+目標：[修復描述]
+```
+
+### 2. 信息濃縮
+**關鍵信息前置和濃縮**
+- 最重要的信息放在請求開頭
+- 使用項目列表和結構化格式
+- 避免冗長的背景說明
+
+### 3. 預期管理
+**明確設定每次對話的邊界**
+- 單一對話完成單一明確任務
+- 複雜任務分解為多個對話
+- 每次對話提供完整的成果總結
+
+## 🎯 實施檢核
+
+Memory Lite 模式下每次互動都應該：
+1. ✅ 自包含且完整
+2. ✅ 明確指定檔案和路徑
+3. ✅ 包含必要的技術上下文
+4. ✅ 提供清晰的期望結果
+5. ✅ 避免依賴之前的對話記憶
+
+**記住：在 Memory Lite 模式下，每次對話都是一個全新的開始！** 🚀
+description:
+globs:
+alwaysApply: false
+---

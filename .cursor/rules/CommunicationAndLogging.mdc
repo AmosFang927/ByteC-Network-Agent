@@ -1,0 +1,167 @@
+## 🗣️ 中文溝通規則
+
+### 強制中文回應
+- **所有回應必須使用繁體中文**
+- 包含代碼說明、錯誤分析、建議方案等
+- 技術術語可以保留英文，但需要中文解釋
+- 變數名稱和函數名稱保持英文，但加上中文註釋
+
+### 中文溝通標準格式
+```
+✅ 正確示例：
+- 這個錯誤是因為 `database_manager.py` 中的連接池配置問題
+- 我將修改 `REQUEST_DELAY` 參數來解決 API 限制問題
+- 建議使用 `grep_search` 而不是 `codebase_search` 來提升效率
+
+❌ 避免純英文回應：
+- The error is caused by connection pool configuration
+- I will modify REQUEST_DELAY parameter
+```
+
+### 技術文檔中文化
+- 錯誤訊息翻譯和解釋
+- 代碼註釋使用中文
+- 操作步驟說明中文化
+- 配置參數說明中文
+
+## 📋 強制日誌輸出規則
+
+### Python 腳本強制緩衝輸出
+**每個 Python 執行命令都必須包含**:
+```bash
+# 正確格式
+PYTHONUNBUFFERED=1 python script_name.py
+
+# 或者
+python -u script_name.py
+
+# 最佳實踐：同時使用兩者確保完整輸出
+PYTHONUNBUFFERED=1 python -u script_name.py
+
+# 特別適用於長時間運行的腳本（如 reporter-agent）
+PYTHONUNBUFFERED=1 python -u main.py generate --days-ago 3 --partner ALL --self-email
+```
+
+### 常用命令標準格式
+```bash
+# 數據庫管理腳本
+PYTHONUNBUFFERED=1 python agents/data_dmp_agent/main.py --query --start-date 2024-07-15 --end-date 2024-07-16
+
+# 報表生成（reporter-agent）
+PYTHONUNBUFFERED=1 python -u main.py generate --days-ago 3 --partner ALL --self-email
+
+# 測試腳本
+PYTHONUNBUFFERED=1 python test_script.py
+
+# Debug 腳本
+PYTHONUNBUFFERED=1 python -u debug_script.py
+
+# 長時間運行的腳本（強制即時輸出）
+PYTHONUNBUFFERED=1 python -u long_running_script.py
+```
+
+### Shell 腳本日誌配置
+```bash
+#!/bin/bash
+# 在腳本開頭加入
+set -x  # 顯示執行的命令
+set -e  # 遇到錯誤立即退出
+
+# Python 調用
+export PYTHONUNBUFFERED=1
+python -u your_script.py
+```
+
+### 強制輸出檢查清單
+執行任何 Python 命令前必須確認：
+- [ ] 已設定 `PYTHONUNBUFFERED=1`
+- [ ] 或使用 `python -u` 參數
+- [ ] 確保即時看到輸出和錯誤信息
+- [ ] 特別是長時間運行的腳本
+- [ ] **重要**：對於 reporter-agent 等長時間運行的腳本，建議同時使用兩者：`PYTHONUNBUFFERED=1 python -u`
+- [ ] 確保所有日誌都通過 `PYTHONUNBUFFERED=1` 和 `python -u` 強制輸出到前端
+
+### 日誌輸出最佳實踐
+```python
+# 在 Python 腳本中加入
+import sys
+import logging
+
+# 確保即時輸出
+sys.stdout.flush()
+sys.stderr.flush()
+
+# 日誌配置
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
+```
+
+## 🚨 執行檢查表
+
+### 每次命令執行前確認
+- [ ] 回應使用繁體中文
+- [ ] Python 命令加入 `PYTHONUNBUFFERED=1`
+- [ ] 長時間腳本使用 `-u` 參數
+- [ ] 解釋技術術語的中文含義
+- [ ] 提供中文的操作說明
+
+### 特殊情況處理
+```bash
+# 需要背景執行但要看日誌
+PYTHONUNBUFFERED=1 nohup python -u script.py > output.log 2>&1 &
+tail -f output.log
+
+# Docker 容器中執行
+docker run -e PYTHONUNBUFFERED=1 image_name python -u script.py
+
+# 虛擬環境中執行
+source venv/bin/activate
+PYTHONUNBUFFERED=1 python -u script.py
+```
+
+## 💡 實用範例
+
+### 常見 ByteC 項目命令
+```bash
+# DMP Agent 查詢
+PYTHONUNBUFFERED=1 python agents/data_dmp_agent/main.py --query --partner MP --start-date 2024-07-15
+
+# Reporter Agent 生成報表（完整命令範例）
+PYTHONUNBUFFERED=1 python -u main.py generate --days-ago 3 --partner ALL --self-email
+
+# Debug 數據問題
+PYTHONUNBUFFERED=1 python -u debug_mp_data_comparison.py
+
+# 測試 API 連接
+PYTHONUNBUFFERED=1 python test_api_connection.py
+
+# 長時間運行的腳本（確保即時看到所有日誌輸出）
+PYTHONUNBUFFERED=1 python -u long_running_script.py
+```
+
+### 命令模板
+```bash
+# 基本執行模板
+PYTHONUNBUFFERED=1 python -u [腳本路徑] [參數]
+
+# 帶日誌重定向
+PYTHONUNBUFFERED=1 python -u [腳本路徑] 2>&1 | tee output.log
+
+# 背景執行
+PYTHONUNBUFFERED=1 nohup python -u [腳本路徑] > log.txt 2>&1 &
+```
+
+## 🎯 執行承諾
+
+**每次提供 Python 執行命令時都將**:
+1. 使用繁體中文說明命令目的
+2. 強制加入 `PYTHONUNBUFFERED=1` 或 `-u` 參數
+3. 解釋命令的預期輸出和執行時間
+4. 提供中文的錯誤排除建議
+description:
+globs:
+alwaysApply: false
+---
