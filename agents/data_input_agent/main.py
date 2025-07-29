@@ -82,7 +82,8 @@ class DataInputAgent:
     async def process_file(self, filename: str, passthrough: bool = False, 
                           analyze_only: bool = False, enable_dmp_forward: bool = False,
                           reporter_agent: bool = False, days_ago: int = 1,
-                          partner: str = None, self_email: bool = False) -> Dict[str, Any]:
+                          partner: str = None, self_email: bool = False,
+                          start_date: str = None, end_date: str = None) -> Dict[str, Any]:
         """处理单个文件"""
         self.logger.info(f"🔄 开始处理文件: {filename}")
         
@@ -99,7 +100,7 @@ class DataInputAgent:
         try:
             # 步骤1: 数据分析
             if not analyze_only:
-                self.logger.info("📈 执行数据分析...")
+                # Removed analysis logging to reduce output noise
                 analysis_result = await self._analyze_file(filename)
                 result['analysis'] = analysis_result
                 self.stats['records_analyzed'] += analysis_result.get('record_count', 0)
@@ -182,7 +183,7 @@ class DataInputAgent:
         except:
             return 0
     
-    async def _forward_to_dmp_agent(self, output_path: str, filename: str, days_ago: int = 1, partner: str = None, passthrough: bool = False, self_email: bool = False) -> Dict[str, Any]:
+    async def _forward_to_dmp_agent(self, output_path: str, filename: str, days_ago: int = 1, partner: str = None, passthrough: bool = False, self_email: bool = False, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
         """转发数据到DMP Agent"""
         try:
             if not config.ENABLE_AGENT_INTER_CALLING:
@@ -195,10 +196,15 @@ class DataInputAgent:
             
             from shared.utils.agent_caller import call_dmp_agent
             
-            # 計算日期範圍
-            target_date = datetime.now() - timedelta(days=days_ago)
-            start_date = target_date.strftime("%Y-%m-%d")
-            end_date = target_date.strftime("%Y-%m-%d")
+            # 計算日期範圍 - 優先使用傳入的 start_date 和 end_date
+            if start_date is None or end_date is None:
+                target_date = datetime.now() - timedelta(days=days_ago)
+                start_date = target_date.strftime("%Y-%m-%d")
+                end_date = target_date.strftime("%Y-%m-%d")
+            else:
+                # 確保使用傳入的日期，不重新計算
+                start_date = start_date
+                end_date = end_date
             
             # 🔍 打印DMP Agent调用信息
             self.logger.info("=" * 60)
@@ -268,7 +274,7 @@ class DataInputAgent:
             self.logger.error(f"❌ {error_msg}")
             return {'success': False, 'error': error_msg}
     
-    async def _forward_to_reporter_agent(self, process_result: Dict[str, Any], days_ago: int = 1, partner: str = None, self_email: bool = False) -> Dict[str, Any]:
+    async def _forward_to_reporter_agent(self, process_result: Dict[str, Any], days_ago: int = 1, partner: str = None, self_email: bool = False, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
         """转发数据到Reporter Agent"""
         try:
             if not config.ENABLE_REPORTER_AGENT_CALLING:
@@ -281,15 +287,25 @@ class DataInputAgent:
             
             from shared.utils.agent_caller import call_reporter_agent
             
-            # 從 DMP Agent 結果中獲取日期範圍
-            start_date = process_result.get('start_date')
-            end_date = process_result.get('end_date')
-            
-            # 如果沒有從 DMP Agent 獲取到日期，則重新計算
-            if not start_date or not end_date:
-                target_date = datetime.now() - timedelta(days=days_ago)
-                start_date = target_date.strftime("%Y-%m-%d")
-                end_date = target_date.strftime("%Y-%m-%d")
+            # 優先使用傳入的 start_date 和 end_date 參數
+            if start_date is None or end_date is None:
+                # 從 DMP Agent 結果中獲取日期範圍
+                start_result_start_date = process_result.get('start_date')
+                process_result_end_date = process_result.get('end_date')
+                
+                # 如果沒有從 DMP Agent 獲取到日期，則重新計算
+                if not process_result_start_date or not process_result_end_date:
+                    target_date = datetime.now() - timedelta(days=days_ago)
+                    start_date = target_date.strftime("%Y-%m-%d")
+                    end_date = target_date.strftime("%Y-%m-%d")
+                else:
+                    # 使用 DMP Agent 返回的日期
+                    start_date = process_result_start_date
+                    end_date = process_result_end_date
+            else:
+                # 確保使用傳入的日期，不重新計算
+                start_date = start_date
+                end_date = end_date
             
             # 🔍 打印Reporter Agent调用信息
             self.logger.info("=" * 60)
@@ -450,7 +466,7 @@ class DataInputAgent:
         self.logger.info("=" * 60)
         self.logger.info(f"✅ 文件处理数量: {self.stats['files_processed']}")
         self.logger.info(f"📥 记录导入数量: {self.stats['records_imported']}")
-        self.logger.info(f"📈 记录分析数量: {self.stats['records_analyzed']}")
+        # Removed analysis logging to reduce output noise
         
         if self.stats['errors']:
             self.logger.info(f"❌ 错误数量: {len(self.stats['errors'])}")
@@ -523,6 +539,10 @@ async def main():
                        help='传递给DMP Agent和Reporter Agent的partner参数')
     parser.add_argument('--self-email', action='store_true',
                        help='传递给Reporter Agent的自发邮件参数')
+    parser.add_argument('--start-date', type=str,
+                       help='开始日期 (YYYY-MM-DD)')
+    parser.add_argument('--end-date', type=str,
+                       help='结束日期 (YYYY-MM-DD)')
     
     # 功能参数
     parser.add_argument('--list-files', action='store_true',
@@ -566,7 +586,9 @@ async def main():
             'reporter_agent': args.reporter_agent,
             'days_ago': args.days_ago,
             'partner': args.partner,
-            'self_email': args.self_email
+            'self_email': args.self_email,
+            'start_date': args.start_date,
+            'end_date': args.end_date
         }
         
         # 风险控制检查
@@ -574,7 +596,7 @@ async def main():
             agent.logger.info("🔄 启用Passthrough模式 - 数据不会插入Cloud SQL")
         
         if args.analyze_only:
-            agent.logger.info("📈 启用仅分析模式 - 不进行数据导入")
+            pass  # Removed analysis logging to reduce output noise
         
         # 主要处理流程
         if args.import_file:

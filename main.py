@@ -665,7 +665,7 @@ class WeeklyReporter:
         # 创建工作簿和工作表
         wb = Workbook()
         ws = wb.active
-        ws.title = config.EXCEL_SHEET_NAME
+        ws.title = 'Data'
         
         # 写入数据（包含标题行），清理特殊字符
         for r in dataframe_to_rows(cleaned_data, index=False, header=True):

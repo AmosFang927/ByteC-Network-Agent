@@ -64,7 +64,7 @@ def main():
     
     # 保存到Excel文件
     output_file = input_dir / "sample_conversion_data.xlsx"
-    df.to_excel(output_file, index=False, engine='openpyxl')
+    df.to_excel(output_file, index=False, engine='openpyxl', sheet_name='Data')
     
     print(f"✅ 示例数据已创建: {output_file}")
     print(f"📊 数据统计:")

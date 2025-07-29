@@ -284,6 +284,13 @@ class DataProcessor:
             
             # 创建工作表，使用Source名称作为Sheet名（清理特殊字符并限制长度）
             safe_sheet_name = self._clean_sheet_name(str(source))
+            safe_sheet_name = str(safe_sheet_name)[:31]
+            if safe_sheet_name in wb.sheetnames:
+                for i in range(1, 100):
+                    candidate = f"{safe_sheet_name[:28]}_{i}"
+                    if candidate not in wb.sheetnames:
+                        safe_sheet_name = candidate
+                        break
             ws = wb.create_sheet(title=safe_sheet_name)
             
             # 写入数据（包含标题行），清理特殊字符
@@ -306,7 +313,14 @@ class DataProcessor:
         # 检查是否有任何Sheet被创建
         if len(wb.worksheets) == 0:
             # 如果没有Sheet，创建一个空的Sheet
-            ws = wb.create_sheet(title="No_Data")
+            no_data_name = "No_Data"
+            if no_data_name in wb.sheetnames:
+                for i in range(1, 100):
+                    candidate = f"No_Data_{i}"
+                    if candidate not in wb.sheetnames:
+                        no_data_name = candidate
+                        break
+            ws = wb.create_sheet(title=no_data_name)
             ws.append(["Partner", "Message"])
             ws.append([partner, "No data available"])
             print_step("Sheet创建", f"⚠️ Partner '{partner}' 没有任何数据，创建空Sheet")

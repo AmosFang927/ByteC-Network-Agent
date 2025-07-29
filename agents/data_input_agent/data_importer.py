@@ -30,7 +30,8 @@ from shared.utils.logger import log_info, log_warning, log_error, print_step
 
 # 使用简单的logger
 def log_info_simple(message):
-    print(f"[INFO] {message}")
+    # Removed INFO logging to reduce output noise
+    pass
 
 def log_warning_simple(message):
     print(f"[WARNING] {message}")
@@ -160,12 +161,11 @@ class DataImporter:
     def save_to_excel(self, df, original_filename, passthrough=False):
         """保存到Excel文件"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # 处理各种文件扩展名
-        filename_without_ext = original_filename
-        for ext in ['.xlsx', '.xls', '.csv']:
-            if filename_without_ext.lower().endswith(ext):
-                filename_without_ext = filename_without_ext[:-len(ext)]
-                break
+        
+        # 处理文件名，提取纯文件名（不包含路径）
+        from pathlib import Path
+        filename_path = Path(original_filename)
+        filename_without_ext = filename_path.stem  # 只获取文件名，不包含扩展名和路径
         
         if passthrough:
             output_filename = f"Passthrough_{filename_without_ext}_{timestamp}.xlsx"
@@ -177,8 +177,16 @@ class DataImporter:
         
         output_path = self.output_dir / output_filename
         
-        # 保存到Excel
-        df.to_excel(output_path, index=False, engine='openpyxl')
+        # 保存到Excel，指定工作表名称避免长产品名称问题
+        # 清理数据中的Excel不兼容字符
+        from utils.excel_character_cleaner import clean_for_excel
+        df_cleaned = df.copy()
+        for col in df_cleaned.columns:
+            if df_cleaned[col].dtype == 'object':  # 只处理字符串列
+                df_cleaned[col] = df_cleaned[col].apply(lambda x: clean_for_excel(x) if x is not None else x)
+        
+        with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+            df_cleaned.to_excel(writer, sheet_name='Data', index=False)
         logger_info(f"数据已保存到: {output_path}")
         
         return output_path

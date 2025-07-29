@@ -20,8 +20,7 @@ class DataAnalyzer:
     
     def analyze_dataframe(self, df, filename="unknown"):
         """对DataFrame进行全面分析"""
-        print(f"\n🔍 开始分析文件: {filename}")
-        print("=" * 60)
+        # Removed analysis logging to reduce output noise
         
         # 基础统计
         basic_stats = self._basic_statistics(df)
@@ -212,67 +211,12 @@ class DataAnalyzer:
     def print_analysis_report(self):
         """打印详细的分析报告"""
         if not self.analysis_results:
-            print("❌ 没有分析结果可显示")
+            # Removed analysis logging to reduce output noise
             return
         
         results = self.analysis_results
         
-        print("\n📊 详细数据分析报告")
-        print("=" * 80)
-        
-        # 文件信息
-        print(f"\n📁 文件信息:")
-        for key, value in results["文件信息"].items():
-            print(f"  • {key}: {value}")
-        
-        # 基础统计
-        print(f"\n📈 基础统计:")
-        for key, value in results["基础统计"].items():
-            if key != "列名列表":
-                print(f"  • {key}: {value}")
-        
-        # 数据质量
-        print(f"\n🎯 数据质量评估:")
-        quality = results["数据质量"]
-        print(f"  • 总体质量评分: {quality['数据质量评分']}")
-        print(f"  • 缺失值情况: {quality['缺失值统计']['总缺失值']} 个 ({quality['缺失值统计']['缺失值比例']})")
-        print(f"  • 重复数据: {quality['重复数据']['重复行数']} 行 ({quality['重复数据']['重复率']})")
-        
-        if quality['缺失值统计']['缺失值最多的列']:
-            print(f"  • 缺失值最多的列:")
-            for col, count in quality['缺失值统计']['缺失值最多的列'].items():
-                print(f"    - {col}: {count} 个")
-        
-        # 业务分析
-        print(f"\n💼 业务分析:")
-        business = results["业务分析"]
-        
-        if "转化分析" in business and business["转化分析"]:
-            print(f"  📋 转化状态分布:")
-            if "状态分布" in business["转化分析"]:
-                for status, count in business["转化分析"]["状态分布"].items():
-                    print(f"    - {status}: {count} 条")
-            if "批准率" in business["转化分析"]:
-                print(f"    - 批准率: {business['转化分析']['批准率']}")
-        
-        if "合作伙伴分析" in business and business["合作伙伴分析"]:
-            print(f"  🤝 合作伙伴分布:")
-            if "合作伙伴分布" in business["合作伙伴分析"]:
-                for partner, count in business["合作伙伴分析"]["合作伙伴分布"].items():
-                    print(f"    - {partner}: {count} 条")
-        
-        if "金额分析" in business and business["金额分析"]:
-            print(f"  💰 金额统计:")
-            for col, stats in business["金额分析"].items():
-                print(f"    - {col}:")
-                for stat_name, stat_value in stats.items():
-                    print(f"      • {stat_name}: {stat_value}")
-        
-        if "时间趋势" in business and business["时间趋势"]:
-            print(f"  📅 时间分析:")
-            for key, value in business["时间趋势"].items():
-                if key != "日期列":
-                    print(f"    - {key}: {value}")
+        # 详细数据分析报告已移除
         
         # 关键列分析
         # print(f"\n🔍 关键列详细分析:")
@@ -301,7 +245,7 @@ class DataAnalyzer:
     def save_analysis_to_file(self, output_dir="output"):
         """保存分析结果到文件"""
         if not self.analysis_results:
-            print("❌ 没有分析结果可保存")
+            # Removed analysis logging to reduce output noise
             return None
         
         output_path = Path(output_dir)
@@ -350,6 +294,8 @@ if __name__ == "__main__":
         try:
             analyze_csv_file(filepath)
         except Exception as e:
-            print(f"❌ 分析失败: {e}")
+            # Removed analysis logging to reduce output noise
+            pass
     else:
-        print("用法: python data_analyzer.py <文件路径>") 
+        # Removed analysis logging to reduce output noise
+        pass 

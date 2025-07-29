@@ -978,7 +978,7 @@ INPUT_DATA_OUTPUT_DIR = "output"
 
 # 输入数据处理配置
 INPUT_DATA_ENABLE_PANDASAI_ANALYSIS = True  # 是否启用pandasai分析
-INPUT_DATA_ENABLE_MOCKUP = True  # 是否启用mockup处理
+INPUT_DATA_ENABLE_MOCKUP = False  # 是否启用mockup处理（禁用以避免與DMP Agent重複處理）
 INPUT_DATA_MOCKUP_MULTIPLIER = 0.9  # mockup倍数
 
 # 输入数据输出模板

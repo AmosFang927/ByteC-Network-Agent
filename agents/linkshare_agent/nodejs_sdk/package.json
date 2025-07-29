@@ -1,0 +1,21 @@
+{
+  "name": "tiktok-shop-sdk-test",
+  "version": "1.0.0",
+  "description": "TikTok Shop SDK Test for LinkShare Agent",
+  "main": "test_sdk.js",
+  "type": "module",
+  "dependencies": {
+    "request": "2.88.2"
+  },
+  "devDependencies": {
+    "@types/request": "2.48.12",
+    "@types/node": "16",
+    "tslib": "2.6.2",
+    "typescript": "^4.9.5"
+  },
+  "scripts": {
+    "test": "node test_sdk.js",
+    "build": "tsc",
+    "start": "node test_sdk.js"
+  }
+} 

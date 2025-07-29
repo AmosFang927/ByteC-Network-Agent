@@ -100,9 +100,15 @@ class AgentCaller:
         
         # 构建命令
         cmd = [
-            'python', 'agents/data_dmp_agent/main.py',
-            '--days-ago', str(days_ago)
+            'python', 'agents/data_dmp_agent/main.py'
         ]
+        
+        # 检查additional_args中是否包含日期参数
+        has_date_params = additional_args and any('--start-date' in arg or '--end-date' in arg for arg in additional_args)
+        
+        # 只有在没有日期参数时才添加days-ago参数
+        if not has_date_params:
+            cmd.extend(['--days-ago', str(days_ago)])
         
         # 只在platform不为None时添加platform参数
         if platform:
@@ -158,9 +164,15 @@ class AgentCaller:
         # 构建命令 - 修正为正确的子命令格式
         cmd = [
             'python', 'agents/reporter_agent/main.py',
-            'generate',  # 使用generate子命令
-            '--days-ago', str(days_ago)
+            'generate'  # 使用generate子命令
         ]
+        
+        # 检查additional_args中是否包含日期参数
+        has_date_params = additional_args and any('--start-date' in arg or '--end-date' in arg for arg in additional_args)
+        
+        # 只有在没有日期参数时才添加days-ago参数
+        if not has_date_params:
+            cmd.extend(['--days-ago', str(days_ago)])
         
         # 只在明确指定时添加partner参数，避免重复
         if platform and platform != 'ALL':  # 避免重复默认的ALL

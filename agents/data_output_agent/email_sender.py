@@ -142,7 +142,7 @@ class EmailSender:
                 
                 # 准备邮件数据
                 email_data = self._prepare_partner_email_data(
-                    partner_name, partner_data, report_date, start_date
+                    partner_name, partner_data, end_date=report_date, start_date=start_date
                 )
                 
                 # 获取收件人列表
@@ -279,16 +279,16 @@ class EmailSender:
             print_step(f"Partner邮件-{partner_name}", f"❌ {error_msg}")
             return {'success': False, 'error': error_msg}
     
-    def _prepare_partner_email_data(self, partner_name, partner_data, report_date=None, start_date=None):
+    def _prepare_partner_email_data(self, partner_name, partner_data, end_date=None, start_date=None):
         """准备Partner邮件数据"""
-        if report_date is None:
-            report_date = datetime.now().strftime("%Y-%m-%d")
-        elif hasattr(report_date, 'strftime'):
+        if end_date is None:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+        elif hasattr(end_date, 'strftime'):
             # 如果是 datetime 對象，轉換為字符串
-            report_date = report_date.strftime("%Y-%m-%d")
+            end_date = end_date.strftime("%Y-%m-%d")
             
         if start_date is None:
-            start_date = report_date
+            start_date = end_date
         elif hasattr(start_date, 'strftime'):
             # 如果是 datetime 對象，轉換為字符串
             start_date = start_date.strftime("%Y-%m-%d")
@@ -336,7 +336,7 @@ class EmailSender:
             summary = generate_unified_summary(
                 partner_name=partner_name,
                 start_date=start_date,
-                end_date=report_date,
+                end_date=end_date,
                 df=df,
                 total_records=partner_data.get('records', 0),
                 total_amount=float(real_total_amount.replace('$', '').replace(',', '')) if isinstance(real_total_amount, str) else real_total_amount,
@@ -372,8 +372,8 @@ class EmailSender:
             'total_records': partner_data.get('records', 0),
             'total_amount': real_total_amount,
             'start_date': start_date,
-            'end_date': report_date,
-            'report_date': report_date,
+            'end_date': end_date,
+            'report_date': end_date,
             'main_file': os.path.basename(file_path) if file_path else '',
             'file_path': file_path,  # 添加完整文件路径，供ByteC邮件模板使用
             'sources': partner_data.get('sources', []),
@@ -932,14 +932,14 @@ class EmailSender:
         if self._is_bytec_partner(partner_name):
             return self._generate_bytec_email_body(partner_name, email_data, feishu_info)
         
-        report_date = email_data.get('report_date', datetime.now().strftime("%Y-%m-%d"))
-        completion_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
         # 从email_data获取Partner专用数据
         total_records = email_data.get('total_records', 0)
         total_amount = email_data.get('total_amount', '$0.00')
-        start_date = email_data.get('start_date', report_date)
-        end_date = email_data.get('end_date', report_date)
+        start_date = email_data.get('start_date', '')
+        end_date = email_data.get('end_date', '')
+        report_date = email_data.get('report_date', end_date)  # 使用 end_date 作為默認值
+        # 使用報告日期而不是當前日期
+        completion_time = f"{report_date} {datetime.now().strftime('%H:%M:%S')}"
         main_file = email_data.get('main_file', f'{partner_name}_ConversionReport_{report_date}.xlsx')
         sources_statistics = email_data.get('sources_statistics', [])
         
@@ -1366,7 +1366,7 @@ class EmailSender:
     # 保持向后兼容性的方法别名
     def _prepare_pub_email_data(self, pub_name, pub_data, report_date=None):
         """向后兼容性方法，调用新的_prepare_partner_email_data"""
-        return self._prepare_partner_email_data(pub_name, pub_data, report_date)
+        return self._prepare_partner_email_data(pub_name, pub_data, report_date, None)
     
     # 保持向后兼容性的方法别名
     def _get_pub_feishu_info(self, pub_name, feishu_upload_result):

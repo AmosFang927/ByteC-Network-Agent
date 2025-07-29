@@ -226,7 +226,14 @@ class ByteCReportGenerator:
         
         # 确保 Sheet 名称符合 Excel 规范
         sheet_name = self._clean_sheet_name(sheet_name)
-        ws = wb.create_sheet(title=sheet_name)
+        safe_sheet_name = str(sheet_name)[:31]
+        if safe_sheet_name in wb.sheetnames:
+            for i in range(1, 100):
+                candidate = f"{safe_sheet_name[:28]}_{i}"
+                if candidate not in wb.sheetnames:
+                    safe_sheet_name = candidate
+                    break
+        ws = wb.create_sheet(title=safe_sheet_name)
         
         # 写入数据
         if len(summary_data) > 0:

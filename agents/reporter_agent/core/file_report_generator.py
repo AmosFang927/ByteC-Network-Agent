@@ -407,7 +407,14 @@ class FileReportGenerator:
             number_alignment = Alignment(horizontal="right", vertical="center")
             
             # 1. 創建主Summary Sheet
-            summary_ws = wb.create_sheet(clean_partner_name, 0)
+            summary_name = clean_partner_name[:31]
+            if summary_name in wb.sheetnames:
+                for i in range(1, 100):
+                    candidate = f"{summary_name[:28]}_{i}"
+                    if candidate not in wb.sheetnames:
+                        summary_name = candidate
+                        break
+            summary_ws = wb.create_sheet(summary_name, 0)
             
             # 添加匯總信息
             current_row = self._add_summary_header(
@@ -428,9 +435,13 @@ class FileReportGenerator:
                         continue
                         
                     # 清理sheet名稱
-                    sheet_name = self._clean_sheet_name(str(source))
+                    sheet_name = self._clean_sheet_name(str(source))[:31]
                     if sheet_name in wb.sheetnames:
-                        sheet_name = f"{sheet_name}_src"
+                        for i in range(1, 100):
+                            candidate = f"{sheet_name[:28]}_{i}"
+                            if candidate not in wb.sheetnames:
+                                sheet_name = candidate
+                                break
                     
                     # 過濾該Source的數據
                     source_df = partner_df[partner_df['Source'] == source].copy()

@@ -231,7 +231,7 @@ class OptimizedReportGenerator:
     def _write_excel_file(self, df: pd.DataFrame, excel_path: Path):
         """寫入Excel文件 (同步執行)"""
         with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='Conversions', index=False)
+            df.to_excel(writer, sheet_name='Data', index=False)
             
             # 格式化工作表
             worksheet = writer.sheets['Conversions']

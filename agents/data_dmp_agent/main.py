@@ -249,7 +249,6 @@ class DMPAgent:
                     
                     # 步驟1: 轉換數據為DataFrame
                     df = pd.DataFrame(processed_conversions)
-                    logger.info(f"📊 原始數據: {len(df)} 行, {len(df.columns)} 列")
                     
                     # 步驟2: 智能標準化欄位名稱 (只對實際存在的欄位進行映射)
                     column_mapping = config.get_dmp_column_mapping()
@@ -340,20 +339,12 @@ class DMPAgent:
                     
                     df = df[final_columns]
                     
-                    # 步驟8: 保存標準化的Excel文件
-                    df.to_excel(output_file_path, index=False)
+                    # 步驟8: 保存標準化的Excel文件，指定工作表名称避免长产品名称问题
+                    with pd.ExcelWriter(output_file_path, engine='openpyxl') as writer:
+                        df.to_excel(writer, sheet_name='Data', index=False)
                     
                     # 記錄統計信息
                     partner_stats = df['Partner'].value_counts().to_dict()
-                    
-                    logger.info("📁 Passthrough模式 - 標準化輸出文件信息:")
-                    logger.info(f"   📄 輸出文件: {output_file_path}")
-                    logger.info(f"   📊 標準化後數據: {len(df):,} 行, {len(df.columns)} 列")
-                    logger.info(f"   📋 標準欄位: {list(df.columns)}")
-                    logger.info(f"   👥 Partner分布: {partner_stats}")
-                    logger.info(f"   💾 文件大小: {os.path.getsize(output_file_path)} bytes")
-                    logger.info(f"   🕒 生成時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                    logger.info(f"   🎯 用途: 供Reporter Agent --import 使用")
                     
                     stored_ids = [f"passthrough_{i}" for i in range(len(processed_conversions))]  # 模擬stored_ids用於統計
                     
@@ -398,45 +389,7 @@ class DMPAgent:
                 'average_sale_amount': total_amount / len(processed_conversions) if processed_conversions else 0
             }
             
-            # 🔍 DMP Agent執行後重點匯總
-            logger.info("=" * 60)
-            logger.info("🎯 DMP Agent 執行完成 - 重點匯總")
-            logger.info("=" * 60)
-            logger.info(f"✅ 平台: {platform}")
-            logger.info(f"📊 數據概覽:")
-            logger.info(f"   - 原始獲取: {len(conversions):,} 條記錄")
-            logger.info(f"   - 最終處理: {len(stored_ids):,} 條記錄")
-            if passthrough:
-                logger.info(f"   - 存儲模式: Passthrough (數據已處理但未存入Cloud SQL)")
-            else:
-                logger.info(f"   - 存儲模式: 標準 (數據已存入Cloud SQL)")
-            
-            logger.info(f"💰 金額統計:")
-            logger.info(f"   - 總銷售額: ${total_amount:,.2f} USD")
-            logger.info(f"   - 總佣金: ${total_payout:,.2f} USD")
-            if total_amount > 0:
-                commission_rate = (total_payout / total_amount) * 100
-                logger.info(f"   - 佣金率: {commission_rate:.2f}%")
-                logger.info(f"   - 平均交易額: ${total_amount / len(processed_conversions):,.2f} USD")
-            
-            logger.info(f"🔧 處理參數:")
-            logger.info(f"   - 處理時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            logger.info(f"   - Passthrough模式: {'啟用' if passthrough else '關閉'}")
-            logger.info(f"   - 數據源: {data_source}")
-            
-            # 🔍 輸出文件信息 (Passthrough模式)
-            if passthrough and output_file_path:
-                logger.info(f"📁 輸出文件信息:")
-                logger.info(f"   - 📄 輸出文件路徑: {output_file_path}")
-                try:
-                    import os
-                    file_size = os.path.getsize(output_file_path)
-                    logger.info(f"   - 💾 文件大小: {file_size:,} bytes")
-                    logger.info(f"   - 🎯 後續用途: Reporter Agent --import 參數")
-                except:
-                    pass
-            
-            logger.info("=" * 60)
+            # DMP Agent執行後重點匯總已移除
             
             return result
             

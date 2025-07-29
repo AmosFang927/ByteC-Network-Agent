@@ -237,7 +237,7 @@ class ReportGenerator:
             # 步驟 5: 邮件发送
             if send_email and excel_files:
                 email_start = self._start_step_timer("郵件發送")
-                email_result = await self._send_emails(partner_summaries, excel_files, start_date, end_date, self_email)
+                email_result = await self._send_emails(partner_summaries, excel_files, start_date, end_date, self_email, partner_name)
                 self.performance_stats['email_send_time'] = self._end_step_timer("郵件發送", email_start)
                 result['email_result'] = email_result
             
@@ -438,8 +438,14 @@ class ReportGenerator:
             number_alignment = Alignment(horizontal="right", vertical="center")
             
             # 創建總表工作表
-            clean_partner_name = self._clean_sheet_name(partner_name)
-            summary_ws = wb.create_sheet(clean_partner_name, 0)
+            summary_name = self._clean_sheet_name(partner_name)[:31]
+            if summary_name in wb.sheetnames:
+                for i in range(1, 100):
+                    candidate = f"{summary_name[:28]}_{i}"
+                    if candidate not in wb.sheetnames:
+                        summary_name = candidate
+                        break
+            summary_ws = wb.create_sheet(summary_name, 0)
             
             if not df.empty:
                 # 初始化为0，以防没有找到匹配的summary
@@ -705,7 +711,8 @@ class ReportGenerator:
                          excel_files: List[str],
                          start_date: datetime,
                          end_date: datetime,
-                         self_email: bool = False) -> Dict[str, Any]:
+                         self_email: bool = False,
+                         partner_name: str = "ALL") -> Dict[str, Any]:
         """发送邮件"""
         try:
             # 准备邮件数据
@@ -750,10 +757,32 @@ class ReportGenerator:
                 }
             
             # 发送邮件
+            # 如果没有partner_summaries，创建一个空的RAMPUP数据用于发送邮件
+            if not partner_summaries and partner_name != "ALL":
+                # 找到对应的Excel文件
+                file_path = None
+                for excel_file in excel_files:
+                    if partner_name in excel_file:
+                        file_path = excel_file
+                        break
+                
+                if not file_path and excel_files:
+                    file_path = excel_files[0]
+                
+                # 创建空的partner数据
+                partner_data[partner_name] = {
+                    'records': 0,
+                    'amount_formatted': '$0.00',
+                    'file_path': file_path,
+                    'sources': [partner_name],
+                    'sources_count': 1,
+                    'invalid_stats': {'invalid_count': 0, 'invalid_amount': 0.0}
+                }
+            
             email_result = self.email_sender.send_partner_reports(
                 partner_data,
-                report_date=end_date,
-                start_date=start_date,
+                report_date=end_date.strftime('%Y-%m-%d') if end_date else None,
+                start_date=start_date.strftime('%Y-%m-%d') if start_date else None,
                 self_email=self_email
             )
             

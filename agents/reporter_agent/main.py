@@ -22,8 +22,8 @@ if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
 # 强制日志输出到前台
-import sys
-import os
+# import sys  # 已在上面導入
+# import os   # 已在上面導入
 
 # 设置环境变量强制输出不被缓冲
 os.environ['PYTHONUNBUFFERED'] = '1'
@@ -115,7 +115,6 @@ async def generate_report_cli(partner_name: str = "ALL",
             # 實現從DMP文件讀取數據並生成報告
             try:
                 import pandas as pd
-                import os
                 
                 # 檢查文件是否存在
                 if not os.path.exists(import_file):
@@ -530,7 +529,7 @@ async def performance_benchmark(partner_name: str = "ALL", test_records: int = 1
         logger.error(f"❌ 性能基準測試失败: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        sys.exit(1)
+        return
 
 if __name__ == "__main__":
     main() 

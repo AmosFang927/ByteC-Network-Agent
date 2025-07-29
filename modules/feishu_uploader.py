@@ -276,14 +276,14 @@ class FeishuUploader:
                                 if retry == 2:  # 最後一次重試，退出內層循環
                                     break
                                 continue
-                                
+                        
                             except requests.exceptions.SSLError as e:
                                 error_msg = str(e)
                                 print_step("SSL錯誤", f"⚠️ {ssl_config['description']}失敗: {error_msg}")
                                 if retry == 2:  # 最後一次重試，退出內層循環
                                     break
-                                continue
-                                
+                            continue
+                            
                     except Exception as e:
                         print_step("配置失敗", f"⚠️ {ssl_config['description']}配置失敗: {e}")
                         continue  # 嘗試下一個SSL配置
