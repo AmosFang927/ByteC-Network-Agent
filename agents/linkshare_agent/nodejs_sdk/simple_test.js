@@ -12,7 +12,7 @@ import { generateSign } from './dist/utils/generate-sign.js';
 // 配置
 const APP_KEY = "6gtqs1d5dtkka";
 const APP_SECRET = "5965f7f420ae4ffe33eff2f48e31a7fb62a76139";
-const ACCESS_TOKEN = "ROW_-TqrPAAAAACo6wRybY_AaSa6Rh6LmKbhnsroaroVrJnuzYEao1G5P2kuwL98FR_SFE4qIDBJfqiSkGpuyGPTs2NImCR5Hckm8RWBXEfdtbbMSjw50VOmog";
+const ACCESS_TOKEN = "ROW_fcKgrgAAAACo6wRybY_AaSa6Rh6LmKbhnsroaroVrJnuzYEao1G5Px53OOhwfbmQhsOzkOb9z8u2fgQi28keGaCT-eKwVdL2iAI4S_f3oR06JfsPtjrfRw";
 
 console.log("🧪 簡單 SDK 測試");
 console.log("=" * 80);
@@ -31,8 +31,9 @@ async function testWithSDKSignature() {
             },
             channel: "OEM3_OPPO",
             tags: [
-                "OEM3_OPPO_PUSH",
-                "OEM2_VIVO_PUSH"
+                "L_OEM1_XIAOMI_PUSH_ID",
+                "L_OEM3_OPPO_PUSH_ID",
+                "L_OEM2_VIVO_PUSH_ID"
             ]
         };
         

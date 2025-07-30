@@ -1,342 +1,396 @@
 #!/usr/bin/env python3
 """
-TikTok Shop 聯盟行銷 Agent 主程序
-提供命令列接口來生成聯盟連結、管理 Token 等
+TikTok Shop 联盟营销 - 主程序
+支持命令行参数生成Tracking Link
 """
 
-import argparse
-import logging
 import sys
+import json
+import logging
+import subprocess
+import time
+import argparse
 from pathlib import Path
-from typing import List, Optional
 
-# 添加項目根目錄到路徑
+# 添加项目根目录到路径
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from . import config
-from .auth import TikTokAuth
-from .token_manager import TokenManager
-from .link_generator import LinkGenerator
+from agents.linkshare_agent import config
+from agents.linkshare_agent.auth import TikTokAuth
 
-def setup_logging(level: str = "INFO"):
-    """設置日誌配置"""
-    numeric_level = getattr(logging, level.upper(), None)
-    if not isinstance(numeric_level, int):
-        raise ValueError(f'Invalid log level: {level}')
-    
+def setup_logging():
+    """设置日志配置"""
     logging.basicConfig(
-        level=numeric_level,
-        format=config.LOG_FORMAT,
-        handlers=[
-            logging.StreamHandler(sys.stdout)
-        ]
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler(sys.stdout)]
     )
 
-def get_access_token_command(args):
-    """獲取 Access Token 命令"""
-    print("🚀 開始獲取 Access Token...")
+def print_step(step_num: int, title: str, details: str = ""):
+    """打印步骤信息"""
+    print(f"\n{'='*70}")
+    print(f"步骤 {step_num}: {title}")
+    print(f"{'='*70}")
+    if details:
+        print(details)
+
+def get_fresh_access_token():
+    """使用新的AUTH_CODE获取access token"""
+    print_step(1, "使用AUTH_CODE获取Access Token", 
+               f"AUTH_CODE: {config.AUTH_CODE[:30]}...")
     
     try:
         auth = TikTokAuth()
-        token_data = auth.get_access_token(args.auth_code)
+        token_data = auth.get_access_token(config.AUTH_CODE)
         
-        print("✅ Access Token 獲取成功!")
-        print(f"🔑 Access Token: {token_data.get('access_token', 'N/A')}")
-        print(f"🔄 Refresh Token: {token_data.get('refresh_token', 'N/A')}")
+        print("✅ 新的Access Token获取成功!")
+        print("\n📊 Token详细信息:")
+        print("-" * 50)
+        print(f"🔑 Access Token: {token_data.get('access_token', 'N/A')[:50]}...")
+        print(f"🔄 Refresh Token: {token_data.get('refresh_token', 'N/A')[:50]}...")
         print(f"👤 Open ID: {token_data.get('open_id', 'N/A')}")
         print(f"🏪 Seller Name: {token_data.get('seller_name', 'N/A')}")
-        print(f"🌍 Base Region: {token_data.get('seller_base_region', 'N/A')}")
+        print(f"👥 User Type: {token_data.get('user_type', 'N/A')}")
+        print(f"⏰ Access Token 过期时间: {token_data.get('access_token_expire_in', 'N/A')}")
+        print(f"⏰ Refresh Token 过期时间: {token_data.get('refresh_token_expire_in', 'N/A')}")
+        print(f"🔐 授权范围: {', '.join(token_data.get('granted_scopes', []))}")
         
-        # 保存 Token
-        token_manager = TokenManager()
-        token_manager.save_tokens(token_data)
-        print("💾 Token 已保存到配置文件")
+        return token_data.get('access_token')
         
     except Exception as e:
-        print(f"❌ 獲取 Access Token 失敗: {str(e)}")
-        sys.exit(1)
+        print(f"❌ 获取Access Token失败: {e}")
+        return None
 
-def refresh_token_command(args):
-    """刷新 Token 命令"""
-    print("🔄 開始刷新 Access Token...")
+def refresh_access_token():
+    """使用refresh token API主动刷新access token"""
+    print_step(1, "主动调用Refresh Token API", 
+               "使用现有refresh token获取新的access token...")
     
     try:
-        token_manager = TokenManager()
-        if token_manager.refresh_token_if_needed():
-            print("✅ Token 刷新成功!")
-        else:
-            print("ℹ️  Token 仍然有效，無需刷新")
-            
+        # 加载当前tokens
+        with open(config.get_token_storage_path(), 'r') as f:
+            tokens = json.load(f)
+        
+        refresh_token = tokens.get('refresh_token')
+        if not refresh_token:
+            print("❌ 没有找到refresh token")
+            return None
+        
+        print(f"📋 使用Refresh Token: {refresh_token[:50]}...")
+        
+        auth = TikTokAuth()
+        new_token_data = auth.refresh_access_token(refresh_token)
+        
+        print("✅ Refresh Token API调用成功!")
+        print("\n📊 新Token详细信息:")
+        print("-" * 50)
+        print(f"🔑 新Access Token: {new_token_data.get('access_token', 'N/A')[:50]}...")
+        print(f"🔄 新Refresh Token: {new_token_data.get('refresh_token', 'N/A')[:50]}...")
+        print(f"⏰ 新Access Token过期时间: {new_token_data.get('access_token_expire_in', 'N/A')}")
+        print(f"⏰ 新Refresh Token过期时间: {new_token_data.get('refresh_token_expire_in', 'N/A')}")
+        
+        # 显示refresh前后的对比
+        print("\n🔄 Token刷新对比:")
+        print("-" * 50)
+        print(f"旧Access Token: {tokens.get('access_token', 'N/A')[:30]}...")
+        print(f"新Access Token: {new_token_data.get('access_token', 'N/A')[:30]}...")
+        print("✅ Token已成功刷新并自动保存!")
+        
+        return new_token_data.get('access_token')
+        
     except Exception as e:
-        print(f"❌ 刷新 Token 失敗: {str(e)}")
-        sys.exit(1)
+        print(f"❌ Refresh Token API调用失败: {e}")
+        return None
 
-def generate_link_command(args):
-    """生成聯盟連結命令"""
-    product_id = args.product_id or config.DEFAULT_PRODUCT_ID
-    print(f"🔗 開始生成產品 {product_id} 的聯盟連結...")
+def update_sdk_token(access_token):
+    """更新SDK中的access token"""
+    print_step(2, "更新SDK中的Access Token")
+    
+    simple_test_path = Path(__file__).parent / "nodejs_sdk" / "simple_test.js"
     
     try:
-        link_generator = LinkGenerator()
+        # 读取文件
+        with open(simple_test_path, 'r', encoding='utf-8') as f:
+            content = f.read()
         
-        # 使用命令列參數或默認值
-        channel = args.channel if args.channel else link_generator.get_default_channel()
+        # 替换access token
+        import re
+        pattern = r'const ACCESS_TOKEN = "[^"]*";'
+        replacement = f'const ACCESS_TOKEN = "{access_token}";'
+        new_content = re.sub(pattern, replacement, content)
         
-        # 處理 tags 參數 - 如果提供了字符串，按逗號分割；否則使用默認值
-        if args.tags:
-            # 檢查 args.tags 是字符串還是列表
-            if isinstance(args.tags, str):
-                tags = [tag.strip() for tag in args.tags.split(',') if tag.strip()]
-            else:
-                # 如果已經是列表，直接使用
-                tags = args.tags
-        else:
-            tags = link_generator.get_default_tags()
+        # 写回文件
+        with open(simple_test_path, 'w', encoding='utf-8') as f:
+            f.write(new_content)
         
-        response = link_generator.generate_affiliate_link(
-            product_id=product_id,
-            channel=channel,
-            tags=tags,
-            campaign_url=args.campaign_url
+        print(f"✅ 已更新simple_test.js中的access token")
+        print(f"📋 新Token: {access_token[:50]}...")
+        return True
+        
+    except Exception as e:
+        print(f"❌ 更新SDK token失败: {e}")
+        return False
+
+def update_sdk_parameters(product_id, tags):
+    """更新SDK中的产品ID和标签参数"""
+    simple_test_path = Path(__file__).parent / "nodejs_sdk" / "simple_test.js"
+    
+    try:
+        # 读取文件
+        with open(simple_test_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 替换产品ID
+        import re
+        product_pattern = r'"id": "[^"]*"'
+        product_replacement = f'"id": "{product_id}"'
+        content = re.sub(product_pattern, product_replacement, content)
+        
+        # 替换campaign URL
+        campaign_pattern = r'"campaignUrl": "[^"]*"'
+        campaign_replacement = f'"campaignUrl": "https://shop.tiktok.com/view/product/{product_id}"'
+        content = re.sub(campaign_pattern, campaign_replacement, content)
+        
+        # 替换标签
+        tags_str = '", "'.join(tags)
+        tags_pattern = r'"tags":\s*\[[^\]]*\]'
+        tags_replacement = f'"tags": [\n                "{tags_str}"\n            ]'
+        content = re.sub(tags_pattern, tags_replacement, content)
+        
+        # 写回文件
+        with open(simple_test_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        print(f"✅ 已更新SDK参数")
+        print(f"📋 产品ID: {product_id}")
+        print(f"🏷️ 标签: {tags}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ 更新SDK参数失败: {e}")
+        return False
+
+def call_sdk_generate_tracking_link(product_id, tags):
+    """调用SDK生成tracking link"""
+    print_step(3, "使用SDK生成Tracking Link", 
+               "调用Node.js SDK进行联盟链接生成...")
+    
+    try:
+        # 显示配置信息
+        print("📋 使用的配置参数:")
+        print(f"   产品ID: {product_id}")
+        print(f"   频道: {config.DEFAULT_CHANNEL}")
+        print(f"   标签: {tags}")
+        print(f"   App Key: {config.APP_KEY}")
+        print(f"   App Version: {config.APP_VERSION}")
+        
+        # 调用Node.js SDK
+        nodejs_sdk_dir = Path(__file__).parent / "nodejs_sdk"
+        
+        print("\n📡 开始调用Node.js SDK...")
+        result = subprocess.run(
+            ["node", "simple_test.js"],
+            cwd=nodejs_sdk_dir,
+            capture_output=True,
+            text=True,
+            timeout=60
         )
         
-        print("✅ 聯盟連結生成完成!")
+        print("📤 SDK调用完成!")
         
-    except Exception as e:
-        print(f"❌ 生成聯盟連結失敗: {str(e)}")
-        sys.exit(1)
-
-def token_info_command(args):
-    """查看 Token 信息命令"""
-    print("📋 查看當前 Token 信息...")
-    
-    try:
-        token_manager = TokenManager()
-        token_info = token_manager.get_token_info()
+        # 分析结果并提取链接
+        success, links = analyze_and_extract_links(result.stdout)
         
-        if token_info:
-            print("✅ Token 信息:")
-            for key, value in token_info.items():
-                if key == 'access_token':
-                    print(f"   🔑 {key}: {value[:20]}..." if value else f"   🔑 {key}: 未設置")
-                elif key == 'refresh_token':
-                    print(f"   🔄 {key}: {value[:20]}..." if value else f"   🔄 {key}: 未設置")
-                else:
-                    print(f"   📝 {key}: {value}")
+        if success and links:
+            print_tracking_links_result(links, product_id, tags)
         else:
-            print("⚠️  未找到 Token 信息")
-            
+            print("\n❌ 未能提取到有效的tracking links")
+            print("📄 SDK原始输出:")
+            print("=" * 60)
+            print(result.stdout)
+            if result.stderr:
+                print("\n⚠️ 错误输出:")
+                print(result.stderr)
+            print("=" * 60)
+        
+        return success
+        
     except Exception as e:
-        print(f"❌ 查看 Token 信息失敗: {str(e)}")
-        sys.exit(1)
+        print(f"❌ SDK调用失败: {e}")
+        return False
 
-def clear_tokens_command(args):
-    """清除 Token 命令"""
-    print("🗑️  開始清除存儲的 Token...")
+def analyze_and_extract_links(output):
+    """分析SDK输出并提取链接信息"""
+    if not output:
+        return False, []
     
     try:
-        token_manager = TokenManager()
-        if token_manager.clear_tokens():
-            print("✅ Token 清除成功!")
+        # 查找成功指标
+        if "200" in output and '"code":0' in output:
+            print("✅ API返回成功状态!")
+            
+            # 提取完整的响应体
+            import re
+            response_match = re.search(r'響應體: ({.*})', output)
+            if response_match:
+                try:
+                    response_json = json.loads(response_match.group(1))
+                    affiliate_links = response_json.get('data', {}).get('affiliate_sharing_links', [])
+                    
+                    links = []
+                    for link_data in affiliate_links:
+                        if 'affiliate_sharing_link' in link_data and 'tag' in link_data:
+                            links.append({
+                                'affiliate_sharing_link': link_data['affiliate_sharing_link'],
+                                'tag': link_data['tag']
+                            })
+                    
+                    return True, links
+                except json.JSONDecodeError as e:
+                    print(f"❌ JSON解析失败: {e}")
+                    return False, []
+            
+            print("🔗 API成功，但无法解析链接信息")
+            return True, []
+            
+        elif "401" in output:
+            print("❌ 401错误: Token认证失败")
+            return False, []
+        elif "400" in output:
+            print("❌ 400错误: 请求参数错误")
+            return False, []
         else:
-            print("⚠️  Token 清除失敗或文件不存在")
+            print("🤔 API调用状态不明，请查看详细输出")
+            return False, []
             
     except Exception as e:
-        print(f"❌ 清除 Token 失敗: {str(e)}")
-        sys.exit(1)
+        print(f"⚠️ 输出分析失败: {e}")
+        return False, []
 
-def validate_permissions_command(args):
-    """驗證文件權限命令"""
-    print("🔐 檢查 Token 存儲權限...")
+def print_tracking_links_result(links, product_id, tags):
+    """按用户要求的格式打印tracking links结果"""
+    print_step(4, "Tracking Links 生成结果")
     
-    try:
-        token_manager = TokenManager()
-        if token_manager.validate_storage_permissions():
-            print("✅ 存儲權限正常")
-        else:
-            print("⚠️  存儲權限可能有問題，請檢查文件權限")
-            
-    except Exception as e:
-        print(f"❌ 權限檢查失敗: {str(e)}")
-        sys.exit(1)
-
-def diagnose_auth_code_command(args):
-    """診斷 AUTH_CODE 狀態"""
-    print("🔍 診斷 AUTH_CODE 狀態...")
+    print(f"🎯 产品ID: {product_id}")
+    print(f"🏷️ 请求标签: {tags}")
+    print(f"🔗 生成链接数量: {len(links)}")
     
-    try:
-        # 檢查配置
-        print(f"📋 當前配置:")
-        print(f"   🔑 APP_KEY: {config.APP_KEY}")
-        print(f"   🔒 APP_SECRET: {config.APP_SECRET[:20]}...")
-        print(f"   🔗 REDIRECT_URL: {config.REDIRECT_URL}")
-        print(f"   📝 AUTH_CODE: {config.AUTH_CODE[:30]}...")
-        print(f"   🌐 TOKEN_GET_URL: {config.TOKEN_GET_URL}")
+    print("\n" + "="*80)
+    print("📊 Generated affiliate links for each sub id:")
+    print("="*80)
+    
+    for i, link_info in enumerate(links, 1):
+        tag = link_info['tag']
+        full_link = link_info['affiliate_sharing_link']
         
-        # 檢查 AUTH_CODE 格式
-        auth_code = config.AUTH_CODE
-        print(f"\n🧐 AUTH_CODE 分析:")
-        print(f"   📏 長度: {len(auth_code)} 字符")
-        print(f"   🔤 格式: {'✅ 正確' if auth_code.startswith('ROW_') else '❌ 格式不正確'}")
-        print(f"   ⏰ 建議: AUTH_CODE 通常在獲取後較短時間內有效")
-        
-        # 嘗試簡單的 API 連接測試
-        print(f"\n🌐 API 連接測試:")
-        auth = TikTokAuth()
-        
-        # 手動構建測試請求來檢查連接
-        import requests
-        test_url = config.TOKEN_GET_URL
-        test_params = {
-            "app_key": config.APP_KEY,
-            "app_secret": config.APP_SECRET,
-            "grant_type": "authorized_code",
-            "auth_code": "INVALID_TEST_CODE"  # 故意使用無效代碼來測試連接
-        }
-        
-        try:
-            response = requests.get(test_url, params=test_params, timeout=10)
-            print(f"   📡 API 端點可達: ✅")
-            print(f"   📈 HTTP 狀態: {response.status_code}")
-            
-            if response.status_code == 200:
-                data = response.json()
-                error_code = data.get('code')
-                if error_code in [36004004, 98001004]:
-                    print(f"   🎯 API 格式正確: ✅ (錯誤碼 {error_code} 表示請求格式正確，只是 auth_code 無效)")
-                else:
-                    print(f"   ⚠️  未預期的錯誤碼: {error_code}")
-            else:
-                print(f"   ❌ HTTP 錯誤: {response.status_code}")
-                
-        except Exception as e:
-            print(f"   ❌ 連接失敗: {str(e)}")
-        
-        print(f"\n💡 建議:")
-        print(f"   1. 確認 AUTH_CODE 是最新獲取的")
-        print(f"   2. AUTH_CODE 通常只能使用一次")
-        print(f"   3. 檢查是否在正確的 TikTok Shop 環境中獲取")
-        print(f"   4. 如果仍有問題，可能需要重新進行授權流程")
-        
-    except Exception as e:
-        print(f"❌ 診斷失敗: {str(e)}")
-        sys.exit(1)
+        print(f"\n🔸 Link {i}:")
+        print(f"   Tag (Sub ID): {tag}")
+        print(f"   ^affiliate_sharing_links -> tracking link: {full_link}")
+        print(f"   ^^affiliate_sharing_link -> short tracking link: {full_link}")
+        print(f"      (Affiliate short link, domain: www.tiktok.com)")
+    
+    print("\n" + "="*80)
+    print("✅ 所有tracking links生成完成!")
+    print("💡 每个链接都可以独立追踪佣金收益")
 
-def main():
-    """主函數"""
+def parse_arguments():
+    """解析命令行参数"""
     parser = argparse.ArgumentParser(
-        description="TikTok Shop 聯盟行銷 Agent",
+        description='TikTok Shop 联盟营销 Tracking Link 生成器',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  # 獲取 Access Token
-  python -m agents.linkshare_agent.main get-token
-  
-  # 刷新 Token
-  python -m agents.linkshare_agent.main refresh-token
-  
-  # 生成聯盟連結 (使用默認參數)
-  python -m agents.linkshare_agent.main generate --pid 1731493745807886173
-  
-  # 生成聯盟連結 (自定義參數)
-  python -m agents.linkshare_agent.main generate --pid 1731493745807886173 --channel "MY_CHANNEL" --tags "TAG1,TAG2"
-  
-  # 查看 Token 信息
-  python -m agents.linkshare_agent.main token-info
-  
-  # 清除 Token
-  python -m agents.linkshare_agent.main clear-tokens
-  
-  # 檢查權限
-  python -m agents.linkshare_agent.main validate-permissions
+使用示例:
+  %(prog)s --product-id 1731493745807886173
+  %(prog)s --product-id 1731493745807886173 --tags L_OEM1_XIAOMI_PUSH_ID L_OEM3_OPPO_PUSH_ID L_OEM2_VIVO_PUSH_ID
+  %(prog)s --refresh-token --product-id 1731493745807886173
+  %(prog)s --help
         """
     )
     
     parser.add_argument(
-        "--log-level",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        default="INFO",
-        help="日誌級別 (默認: INFO)"
+        '--product-id',
+        type=str,
+        default=config.DEFAULT_PRODUCT_ID,
+        help=f'产品ID (默认: {config.DEFAULT_PRODUCT_ID})'
     )
     
-    subparsers = parser.add_subparsers(dest="command", help="可用命令")
-    
-    # get-token 子命令
-    get_token_parser = subparsers.add_parser("get-token", help="獲取 Access Token")
-    get_token_parser.add_argument(
-        "--auth-code",
-        help="授權碼 (可選，默認使用配置文件中的 AUTH_CODE)"
+    parser.add_argument(
+        '--tags',
+        nargs='+',
+        default=["L_OEM1_XIAOMI_PUSH_ID", "L_OEM3_OPPO_PUSH_ID", "L_OEM2_VIVO_PUSH_ID"],
+        help='标签列表 (默认: L_OEM1_XIAOMI_PUSH_ID L_OEM3_OPPO_PUSH_ID L_OEM2_VIVO_PUSH_ID)'
     )
     
-    # refresh-token 子命令
-    refresh_token_parser = subparsers.add_parser("refresh-token", help="刷新 Access Token")
-    
-    # generate 子命令
-    generate_parser = subparsers.add_parser("generate", help="生成聯盟連結")
-    generate_parser.add_argument(
-        "--pid", "--product-id",
-        dest="product_id",
-        help="產品 ID (可選，默認使用配置中的 DEFAULT_PRODUCT_ID)"
-    )
-    generate_parser.add_argument(
-        "--channel",
-        help="頻道名稱 (可選，默認使用配置中的 DEFAULT_CHANNEL)"
-    )
-    generate_parser.add_argument(
-        "--tags",
-        help="標籤列表，用逗號分隔 (可選，默認使用配置中的 DEFAULT_TAGS)"
-    )
-    generate_parser.add_argument(
-        "--campaign-url",
-        help="活動 URL (可選，會自動生成)"
+    parser.add_argument(
+        '--refresh-token',
+        action='store_true',
+        help='主动调用refresh token API，更新access token和refresh token'
     )
     
-    # token-info 子命令
-    token_info_parser = subparsers.add_parser("token-info", help="查看 Token 信息")
+    return parser.parse_args()
+
+def main():
+    """主函数"""
+    setup_logging()
     
-    # clear-tokens 子命令
-    clear_tokens_parser = subparsers.add_parser("clear-tokens", help="清除存儲的 Token")
+    # 解析命令行参数
+    args = parse_arguments()
     
-    # validate-permissions 子命令
-    validate_permissions_parser = subparsers.add_parser("validate-permissions", help="驗證文件權限")
+    print("🚀 TikTok Shop 联盟营销 Tracking Link 生成器")
+    print("🎯 开始生成联盟营销链接...")
     
-    # diagnose-auth-code 子命令
-    diagnose_auth_code_parser = subparsers.add_parser("diagnose-auth-code", help="診斷 AUTH_CODE 狀態")
+    print(f"\n📋 输入参数:")
+    print(f"   产品ID: {args.product_id}")
+    print(f"   标签: {args.tags}")
+    print(f"   刷新Token: {'是' if args.refresh_token else '否'}")
     
-    args = parser.parse_args()
-    
-    # 設置日誌
-    setup_logging(args.log_level)
-    
-    # 驗證配置
-    try:
-        config.validate_config()
-    except ValueError as e:
-        print(f"❌ 配置錯誤: {e}")
-        sys.exit(1)
-    
-    # 處理 tags 參數
-    if hasattr(args, 'tags') and args.tags:
-        args.tags = [tag.strip() for tag in args.tags.split(',')]
-    
-    # 根據命令執行相應的函數
-    if args.command == "get-token":
-        get_access_token_command(args)
-    elif args.command == "refresh-token":
-        refresh_token_command(args)
-    elif args.command == "generate":
-        generate_link_command(args)
-    elif args.command == "token-info":
-        token_info_command(args)
-    elif args.command == "clear-tokens":
-        clear_tokens_command(args)
-    elif args.command == "validate-permissions":
-        validate_permissions_command(args)
-    elif args.command == "diagnose-auth-code":
-        diagnose_auth_code_command(args)
+    # 步骤1: 获取access token
+    if args.refresh_token:
+        # 主动调用refresh token API
+        access_token = refresh_access_token()
+        if not access_token:
+            print("\n💥 Refresh Token失败，流程终止")
+            return False
     else:
-        parser.print_help()
-        sys.exit(1)
+        # 尝试使用现有token，失败则获取新token
+        try:
+            from agents.linkshare_agent.token_manager import TokenManager
+            token_manager = TokenManager()
+            access_token = token_manager.get_valid_token()
+            print("✅ 使用现有有效Token")
+            print(f"📋 Token: {access_token[:50]}...")
+        except:
+            access_token = get_fresh_access_token()
+            if not access_token:
+                print("\n💥 无法获取access token，流程终止")
+                return False
+    
+    # 步骤2: 更新SDK中的token
+    if not update_sdk_token(access_token):
+        print("\n💥 无法更新SDK token，流程终止")
+        return False
+    
+    # 步骤3: 更新SDK中的参数
+    if not update_sdk_parameters(args.product_id, args.tags):
+        print("\n💥 无法更新SDK参数，流程终止")
+        return False
+    
+    # 步骤4: 调用SDK生成tracking link
+    success = call_sdk_generate_tracking_link(args.product_id, args.tags)
+    
+    # 最终总结
+    if success:
+        print(f"\n🎉 Tracking Link生成成功完成!")
+        print(f"📊 产品ID: {args.product_id}")
+        print(f"🏷️ 标签数量: {len(args.tags)}")
+        print(f"💾 Token信息已保存到: {config.get_token_storage_path()}")
+        
+    else:
+        print(f"\n❌ Tracking Link生成失败")
+        print(f"💡 请检查网络连接和API配置")
+    
+    return success
 
 if __name__ == "__main__":
-    main() 
+    success = main()
+    sys.exit(0 if success else 1)

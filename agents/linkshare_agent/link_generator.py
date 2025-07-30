@@ -10,7 +10,7 @@ import logging
 from typing import Dict, List, Optional
 from . import config
 from .token_manager import TokenManager
-from .signature import generate_sign_sdk_style
+from .sdk_signature import generate_sign_sdk_style
 
 # 設置日誌
 logger = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ class LinkGenerator:
             
             # 4. 發送 API 請求
             logger.info("🚀 發送 API 請求...")
-            response = self._make_api_request(request_params, request_data)
+            response = self._make_api_request(request_params, request_data, access_token)
             
             # 5. 處理響應
             response_data = self._handle_response(response)
@@ -153,50 +153,41 @@ class LinkGenerator:
         
         request_params = {
             "app_key": self.app_key,
-            "access_token": access_token,  # 簽名計算需要包含 access_token
             "timestamp": timestamp
-            # 注意：SDK 不會在查詢參數中包含 version
+            # 注意：access_token 不包含在簽名計算的查詢參數中
         }
         
         logger.debug(f"⚙️  請求參數: {request_params}")
         return request_params
         
-    def _make_api_request(self, request_params: Dict, request_data: Dict) -> requests.Response:
+    def _make_api_request(self, request_params: Dict, request_data: Dict, access_token: str) -> requests.Response:
         """
         發送 API 請求
         """
         # 構建完整 URL
         full_url = f"{config.API_BASE_URL}/affiliate_creator/{config.APP_VERSION}/affiliate_sharing_links/generate_batch"
         
-        # 準備請求選項（用於簽名計算）
+        # 準備請求選項（用於簽名計算 - 不包含 access token）
         request_option = {
             'uri': full_url,
             'qs': request_params,
             'body': request_data,
-            'headers': {
-                'Content-Type': 'application/json'
-            }
+            'headers': config.BASE_HEADERS
         }
         
         # 使用 SDK 風格的簽名算法
         signature = generate_sign_sdk_style(request_option, config.APP_SECRET)
         logger.info(f"🔐 使用 SDK 風格簽名: {signature[:16]}...")
         
-        # 準備 URL 參數（移除 access_token，它應該在 header 中）
+        # 準備 URL 參數（保持與簽名計算一致的參數）
         url_params = {
             'app_key': config.APP_KEY,
             'timestamp': request_params['timestamp'],
             'sign': signature
-            # 注意：SDK 不包含 version 在查詢參數中
         }
         
-        # 準備請求頭（添加 SDK 風格的請求頭）
-        headers = {
-            'Content-Type': 'application/json',
-            'User-Agent': 'sdk_node/1.0.0',  # 添加 SDK 風格的 User-Agent
-            'Accept': 'application/json',     # 添加 Accept 請求頭
-            'x-tts-access-token': request_params['access_token']
-        }
+        # 準備請求頭（使用標準化配置）
+        headers = config.get_api_headers(access_token)
         
         logger.debug(f"🌐 API URL: {full_url}")
         logger.debug(f"📋 URL 參數: {url_params}")

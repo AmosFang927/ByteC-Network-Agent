@@ -14,7 +14,7 @@ from pathlib import Path
 APP_KEY = "6gtqs1d5dtkka"
 APP_SECRET = "5965f7f420ae4ffe33eff2f48e31a7fb62a76139"
 REDIRECT_URL = "https://bytec-postback-agent-472712465571.asia-southeast1.run.app"
-AUTH_CODE = "ROW_zrhDPAAAAABE_Ppf1X4y3-0HZBvKa934lbOqPRGhDryxogAKf4eCX8Q-c8nBCcFyAdmlWQGd_8Dc5OOlhAns3GR3H8KAxGKA"
+AUTH_CODE = "ROW_uQ2OJQAAAABE_Ppf1X4y3-0HZBvKa934lbOqPRGhDryxogAKf4eCX-bS1UcJ5OCa6ZtYwvgWc636IDqjd6umEMWW_WLuRYwX"
 
 # API 版本
 APP_VERSION = "202501"
@@ -55,6 +55,31 @@ CONNECT_TIMEOUT = 10
 MAX_RETRIES = 3
 RETRY_DELAY = 1  # 初始延遲時間 (秒)
 RETRY_BACKOFF = 2  # 退避倍數
+
+# ================================
+# HTTP 請求頭配置
+# ================================
+
+# 基礎請求頭
+BASE_HEADERS = {
+    "Content-Type": "application/json"
+}
+
+# API 請求頭 (包含訪問令牌)
+def get_api_headers(access_token: str) -> dict:
+    """
+    獲取 API 請求頭
+    
+    Args:
+        access_token: 訪問令牌
+        
+    Returns:
+        包含必要請求頭的字典
+    """
+    return {
+        "x-tts-access-token": access_token,
+        "Content-Type": "application/json"
+    }
 
 # ================================
 # 聯盟連結生成配置
@@ -143,4 +168,28 @@ def validate_config():
 
 # 在模組載入時驗證配置
 if __name__ != "__main__":
-    validate_config() 
+    validate_config()
+
+# ================================
+# HTTP 請求頭使用說明
+# ================================
+
+"""
+HTTP 請求頭標準化說明:
+
+1. TikTok Shop API 要求的請求頭 (僅需要以下兩個):
+   - x-tts-access-token: [訪問令牌]
+   - Content-Type: application/json
+
+2. 使用方式:
+   # 獲取包含訪問令牌的完整請求頭
+   headers = config.get_api_headers(access_token)
+   
+   # 獲取基礎請求頭 (不包含訪問令牌)  
+   headers = config.BASE_HEADERS
+
+3. 注意事項:
+   - 所有 API 請求都應使用 get_api_headers() 方法
+   - 訪問令牌請求頭名稱為 "x-tts-access-token"
+   - 只需要這兩個請求頭，其他都不需要
+""" 
