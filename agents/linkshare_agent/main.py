@@ -153,9 +153,30 @@ def update_sdk_parameters(product_id, tags):
         
         # 替换标签
         tags_str = '", "'.join(tags)
-        tags_pattern = r'"tags":\s*\[[^\]]*\]'
-        tags_replacement = f'"tags": [\n                "{tags_str}"\n            ]'
-        content = re.sub(tags_pattern, tags_replacement, content)
+        # 使用更简单和可靠的正则表达式
+        tags_pattern = r'tags:\s*\[\s*(?:"[^"]*"(?:\s*,\s*"[^"]*")*)?\s*\]'
+        tags_replacement = f'tags: [\n                "{tags_str}"\n            ]'
+        
+        # 添加调试信息
+        print(f"🔍 调试信息:")
+        print(f"   正则表达式: {tags_pattern}")
+        print(f"   替换内容: {tags_replacement}")
+        
+        # 检查是否找到匹配
+        if re.search(tags_pattern, content):
+            print(f"   ✅ 找到匹配的tags数组")
+            content = re.sub(tags_pattern, tags_replacement, content)
+            print(f"   ✅ 标签已更新")
+        else:
+            print(f"   ❌ 未找到匹配的tags数组")
+            # 尝试更宽松的匹配
+            fallback_pattern = r'tags:\s*\[[^\]]*\]'
+            if re.search(fallback_pattern, content):
+                print(f"   🔄 使用备用正则表达式")
+                content = re.sub(fallback_pattern, tags_replacement, content)
+                print(f"   ✅ 标签已更新（备用方法）")
+            else:
+                print(f"   ❌ 备用正则表达式也未找到匹配")
         
         # 写回文件
         with open(simple_test_path, 'w', encoding='utf-8') as f:
