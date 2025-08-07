@@ -7,6 +7,7 @@
 
 import os
 import sys
+import re
 import pandas as pd
 import time
 from datetime import datetime, timedelta
@@ -313,14 +314,36 @@ class FileReportGenerator:
         try:
             partner_summaries = []
             
-            # 按Partner分組統計
-            partner_groups = df.groupby('Partner')
+            # 導入配置以獲取所有Partners
+            from config import PARTNER_SOURCES_MAPPING
             
-            for partner_name, group_df in partner_groups:
-                if partner_name == 'Unknown':
-                    continue  # 跳過Unknown分組
+            # 獲取配置中的所有Partners
+            config_partners = set(PARTNER_SOURCES_MAPPING.keys())
+            
+            # 按Partner分組統計（基於數據中實際存在的Partners）
+            partner_groups = df.groupby('Partner')
+            data_partners = set(partner_groups.groups.keys())
+            
+            # 合併配置中的Partners和數據中的Partners
+            all_partners = config_partners.union(data_partners)
+            
+            logger.info(f"🔍 配置中的Partners: {sorted(config_partners)}")
+            logger.info(f"🔍 數據中的Partners: {sorted(data_partners)}")
+            logger.info(f"🔍 將處理的所有Partners: {sorted(all_partners)}")
+            
+            # 為所有Partners創建統計
+            for partner_name in all_partners:
+                if partner_name in data_partners:
+                    # 數據中存在該Partner
+                    group_df = partner_groups.get_group(partner_name)
+                    summary = await self._create_single_partner_summary(group_df, partner_name)
+                else:
+                    # 數據中不存在該Partner，創建空的統計
+                    logger.info(f"📊 為 {partner_name} 創建空統計（數據中無記錄）")
+                    # 創建一個包含必要列的空的DataFrame，避免列缺失錯誤
+                    empty_df = pd.DataFrame(columns=['Status', 'USD Sale Amount', 'Source', 'Partner'])
+                    summary = await self._create_single_partner_summary(empty_df, partner_name)
                 
-                summary = await self._create_single_partner_summary(group_df, partner_name)
                 partner_summaries.append(summary)
             
             # 按total_records排序（降序）
@@ -335,6 +358,42 @@ class FileReportGenerator:
     async def _create_single_partner_summary(self, partner_df: pd.DataFrame, partner_name: str) -> PartnerSummary:
         """創建單個Partner的統計信息"""
         try:
+            # 檢查必要的列是否存在
+            required_columns = ['Status', 'USD Sale Amount', 'Source']
+            missing_columns = [col for col in required_columns if col not in partner_df.columns]
+            
+            if missing_columns:
+                logger.warning(f"⚠️ {partner_name} 數據缺少必要列: {missing_columns}")
+                # 如果缺少Status列，假設所有記錄都是有效的
+                if 'Status' not in partner_df.columns:
+                    logger.info(f"📊 {partner_name} 無Status列，假設所有記錄為有效轉化")
+                    total_records = len(partner_df)
+                    total_amount = Decimal(str(partner_df['USD Sale Amount'].sum())) if 'USD Sale Amount' in partner_df.columns else Decimal('0')
+                    sources = partner_df['Source'].unique().tolist() if 'Source' in partner_df.columns else []
+                    sources = [s for s in sources if pd.notna(s) and s != '']
+                    
+                    return PartnerSummary(
+                        partner_name=partner_name,
+                        partner_id=None,
+                        total_records=total_records,
+                        total_amount=total_amount,
+                        sources=sources,
+                        excluded_records=0,
+                        excluded_statuses=[]
+                    )
+                else:
+                    # 如果缺少其他列，返回空統計
+                    logger.error(f"❌ {partner_name} 缺少關鍵列: {missing_columns}")
+                    return PartnerSummary(
+                        partner_name=partner_name,
+                        partner_id=None,
+                        total_records=0,
+                        total_amount=Decimal('0'),
+                        sources=[],
+                        excluded_records=0,
+                        excluded_statuses=[]
+                    )
+            
             # 計算有效轉化（pending/approved）
             valid_statuses = ['pending', 'approved', 'approved_pending']
             valid_mask = partner_df['Status'].str.lower().isin(valid_statuses)
@@ -365,6 +424,8 @@ class FileReportGenerator:
             
         except Exception as e:
             logger.error(f"❌ 創建 {partner_name} 統計失敗: {e}")
+            logger.error(f"   數據列: {list(partner_df.columns) if not partner_df.empty else '空DataFrame'}")
+            logger.error(f"   數據形狀: {partner_df.shape}")
             return PartnerSummary(
                 partner_name=partner_name,
                 partner_id=None,
@@ -701,9 +762,24 @@ class FileReportGenerator:
                     print_step("邮件发送", f"📧 正在发送 {partner_name} 的邮件...")
                     
                     # 發送郵件
-                    # 使用傳入的日期參數，如果沒有則使用今天的日期
-                    report_date = end_date if end_date else datetime.now().strftime('%Y-%m-%d')
-                    start_date_param = start_date if start_date else report_date
+                    # 🎯 修復：優先使用傳入的日期參數，確保郵件日期與實際數據日期範圍一致
+                    if start_date and end_date:
+                        # 使用傳入的日期參數
+                        report_date = end_date
+                        start_date_param = start_date
+                        logger.info(f"📅 使用傳入的日期範圍: {start_date} to {end_date}")
+                    else:
+                        # 備用方案：從文件名中提取日期
+                        extracted_date = self._extract_date_from_filename(excel_file)
+                        if extracted_date:
+                            report_date = extracted_date
+                            start_date_param = extracted_date
+                            logger.info(f"📅 使用文件名中的日期: {extracted_date}")
+                        else:
+                            # 最後備用方案：使用當前日期
+                            report_date = datetime.now().strftime('%Y-%m-%d')
+                            start_date_param = report_date
+                            logger.info(f"📅 使用當前日期: {report_date}")
                     
                     result = self.email_sender.send_partner_reports(
                         partner_summary={partner_name: {'file_path': excel_file}},
@@ -807,7 +883,26 @@ class FileReportGenerator:
             
             # 2. 獲取原始數據和Mockup信息
             original_stats = await self._get_original_data_stats()
-            mockup_multiplier = config.MOCKUP_MULTIPLIER
+            
+            # 獲取Partner特定的mockup倍數
+            from config import get_partner_mockup_multiplier
+            partner_mockup_info = {}
+            
+            # 為每個Partner獲取mockup配置
+            for partner_name in partners_list:
+                if partner_name.upper() in ['RAMPUP', 'DEEPLEAPER', 'TESTPARTNER', 'MKK', 'MP', 'FTK', 'BYTEC']:
+                    mockup_multiplier = get_partner_mockup_multiplier(partner_name.upper())
+                    partner_mockup_info[partner_name] = mockup_multiplier
+                else:
+                    # 使用默認倍數
+                    mockup_multiplier = getattr(config, 'MOCKUP_MULTIPLIER', 0.9)
+                    partner_mockup_info[partner_name] = mockup_multiplier
+            
+            # 如果只有一個Partner，使用其mockup倍數；否則使用默認倍數
+            if len(partners_list) == 1:
+                mockup_multiplier = partner_mockup_info[partners_list[0]]
+            else:
+                mockup_multiplier = getattr(config, 'MOCKUP_MULTIPLIER', 0.9)
             
             # 3. 計算當前數據統計
             total_conversions = len(df)
@@ -828,6 +923,13 @@ class FileReportGenerator:
                 print_step(f"Original Sale Amount (USD) (All Status): ${original_stats['total_amount']:,.2f}", "")
             
             print_step(f"Mockup: {mockup_multiplier} (from @config.py)", "")
+            
+            # 添加Partner mockup配置詳細信息
+            print_step("", "")
+            print_step("🎯 Partner Mockup 配置詳情:", "")
+            for partner_name, multiplier in partner_mockup_info.items():
+                print_step(f"   📊 {partner_name}: {multiplier} ({multiplier * 100}%)", "")
+            
             print_step("", "")
             
             print_step(f"Total Conversions (All Status): {total_conversions:,}", "")
@@ -843,8 +945,82 @@ class FileReportGenerator:
             
             print_step("=" * 80, "")
             
+            # 添加Partner mockup前後情況總結
+            await self._print_partner_mockup_summary(partner_mockup_info, original_stats, total_amount_pending_approved)
+            
         except Exception as e:
             logger.error(f"❌ 生成重點總結失敗: {e}")
+    
+    async def _print_partner_mockup_summary(self, partner_mockup_info: Dict[str, float], original_stats: Optional[Dict[str, Any]], current_amount: float):
+        """打印Partner mockup前後情況總結"""
+        try:
+            print_step("", "")
+            print_step("📊 Partner Mockup 前後情況總結", "SUMMARY")
+            print_step("=" * 80, "")
+            
+            # 計算原始金額（如果可用）
+            if original_stats and 'total_amount' in original_stats:
+                original_amount = original_stats['total_amount']
+                print_step(f"💰 原始總金額 (USD): ${original_amount:,.2f}", "")
+                print_step(f"💰 當前總金額 (USD): ${current_amount:,.2f}", "")
+                
+                # 計算變化
+                amount_change = current_amount - original_amount
+                change_percentage = (amount_change / original_amount * 100) if original_amount > 0 else 0
+                print_step(f"📈 金額變化: ${amount_change:+,.2f} ({change_percentage:+.2f}%)", "")
+            else:
+                print_step(f"💰 當前總金額 (USD): ${current_amount:,.2f}", "")
+            
+            print_step("", "")
+            print_step("🎯 Partner Mockup 配置影響:", "")
+            
+            # 分析每個Partner的mockup影響
+            total_original_estimate = 0
+            total_adjusted_estimate = 0
+            
+            for partner_name, multiplier in partner_mockup_info.items():
+                if multiplier != 1.0:  # 只顯示有調整的Partner
+                    adjustment = (multiplier - 1) * 100
+                    print_step(f"   📊 {partner_name}: {multiplier} ({adjustment:+.1f}% 調整)", "")
+                    
+                    # 估算該Partner的原始金額（基於當前金額和倍數）
+                    if current_amount > 0:
+                        # 假設所有Partner的數據比例相同，估算該Partner的原始金額
+                        partner_original_estimate = current_amount / multiplier
+                        partner_adjusted_estimate = current_amount
+                        total_original_estimate += partner_original_estimate
+                        total_adjusted_estimate += partner_adjusted_estimate
+                else:
+                    print_step(f"   📊 {partner_name}: {multiplier} (無調整)", "")
+            
+            print_step("", "")
+            print_step("📈 Mockup 影響估算:", "")
+            if total_original_estimate > 0:
+                print_step(f"   💰 估算原始總金額: ${total_original_estimate:,.2f}", "")
+                print_step(f"   💰 調整後總金額: ${total_adjusted_estimate:,.2f}", "")
+                print_step(f"   📊 總調整幅度: {((total_adjusted_estimate / total_original_estimate - 1) * 100):+.2f}%", "")
+            
+            print_step("", "")
+            print_step("🔧 Mockup 配置來源: @config.py", "")
+            print_step("   - 所有Partner的mockup倍數都從config.py的PARTNER_SOURCES_MAPPING獲取", "")
+            print_step("   - 使用get_partner_mockup_multiplier()函數獲取特定Partner的倍數", "")
+            
+            # 打印所有Partner的配置
+            print_step("", "")
+            print_step("📋 所有Partner Mockup 配置:", "")
+            for partner_name, multiplier in partner_mockup_info.items():
+                status = "✅ 已調整" if multiplier != 1.0 else "➖ 無調整"
+                print_step(f"   📊 {partner_name}: {multiplier} ({multiplier * 100}%) - {status}", "")
+            
+            print_step("", "")
+            print_step("🎯 重點提醒:", "")
+            print_step("   - FTK Partner: 100% (無調整)", "")
+            print_step("   - 其他Partner: 80% (20% 調整)", "")
+            print_step("   - ByteC Partner: 80% (20% 調整)", "")
+            
+        except Exception as e:
+            logger.error(f"❌ 打印Partner mockup總結失敗: {e}")
+            print_step(f"❌ 打印Partner mockup總結失敗: {e}", "")
     
     def _get_date_range_for_filename(self, start_date: Optional[str], end_date: Optional[str], import_file_path: str) -> str:
         """獲取檔名中的日期範圍"""
@@ -865,11 +1041,40 @@ class FileReportGenerator:
             logger.warning(f"⚠️ 獲取日期範圍失敗: {e}")
             return "unknown_date_range"
     
+    def _extract_date_from_filename(self, file_path: str) -> Optional[str]:
+        """從文件名中提取單個日期（用於郵件日期）"""
+        try:
+            filename = os.path.basename(file_path)
+            
+            # 匹配8位数字日期格式（YYYYMMDD）
+            match = re.search(r'(\d{8})', filename)
+            if match:
+                date_str = match.group(1)
+                # 格式化為 YYYY-MM-DD
+                formatted_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+                logger.info(f"📅 從文件名提取日期: {formatted_date}")
+                return formatted_date
+            
+            # 備用方案：使用昨天日期
+            yesterday = datetime.now() - timedelta(days=1)
+            date_str = yesterday.strftime("%Y-%m-%d")
+            logger.info(f"📅 使用備用日期: {date_str}")
+            return date_str
+            
+        except Exception as e:
+            logger.warning(f"⚠️ 提取日期失敗: {e}")
+            return None
+    
     def _extract_date_range_from_filename(self, import_file_path: str) -> str:
         """從文件路徑中提取日期範圍"""
         try:
-            # 嘗試從文件名中提取日期，例如 'publisher-conversion-report--LXTlT9i5-20250725.csv'
-            match = re.search(r'(\d{8})\.csv$', os.path.basename(import_file_path))
+            # 嘗試從文件名中提取日期，支持多種格式：
+            # 1. 'publisher-conversion-report--LXTlT9i5-20250725.csv'
+            # 2. 'DMP_temp_DeepLeaper_20250804_215355.xlsx'
+            filename = os.path.basename(import_file_path)
+            
+            # 匹配8位数字日期格式（YYYYMMDD）
+            match = re.search(r'(\d{8})', filename)
             if match:
                 date_str = match.group(1)
                 # 格式化為 YYYY-MM-DD

@@ -17,12 +17,12 @@ from email import encoders
 from datetime import datetime
 from utils.logger import print_step
 import logging
+from typing import List, Optional
 
 # 获取logger实例
 logger = logging.getLogger(__name__)
 import config
 import pandas as pd
-from typing import List
 
 class EmailSender:
     """邮件发送器"""
@@ -144,6 +144,11 @@ class EmailSender:
                 email_data = self._prepare_partner_email_data(
                     partner_name, partner_data, end_date=report_date, start_date=start_date
                 )
+                
+                # 确保email_data包含文件路径信息，供日期提取使用
+                if 'file_path' not in email_data and partner_data.get('file_path'):
+                    email_data['file_path'] = partner_data.get('file_path')
+                    email_data['file_paths'] = [partner_data.get('file_path')]
                 
                 # 获取收件人列表
                 recipients = self._get_partner_recipients(partner_name, self_email)
@@ -281,19 +286,40 @@ class EmailSender:
     
     def _prepare_partner_email_data(self, partner_name, partner_data, end_date=None, start_date=None):
         """准备Partner邮件数据"""
-        if end_date is None:
-            end_date = datetime.now().strftime("%Y-%m-%d")
-        elif hasattr(end_date, 'strftime'):
-            # 如果是 datetime 對象，轉換為字符串
-            end_date = end_date.strftime("%Y-%m-%d")
-            
-        if start_date is None:
-            start_date = end_date
-        elif hasattr(start_date, 'strftime'):
-            # 如果是 datetime 對象，轉換為字符串
-            start_date = start_date.strftime("%Y-%m-%d")
-        
         file_path = partner_data.get('file_path')
+        
+        # 🎯 修復：優先使用傳入的日期參數，只有在缺失時才從文件名提取
+        if start_date is not None and end_date is not None:
+            # 使用傳入的日期參數
+            print_step("邮件数据准备", f"📅 使用傳入的日期範圍: {start_date} to {end_date}")
+            
+            # 如果是 datetime 對象，轉換為字符串
+            if hasattr(end_date, 'strftime'):
+                end_date = end_date.strftime("%Y-%m-%d")
+            if hasattr(start_date, 'strftime'):
+                start_date = start_date.strftime("%Y-%m-%d")
+        else:
+            # 備用方案：從文件名中提取報表日期
+            extracted_report_date = None
+            if file_path:
+                extracted_report_date = self._extract_report_date_from_filename(file_path)
+                if extracted_report_date:
+                    print_step("邮件数据准备", f"📅 使用文件名中的报表日期: {extracted_report_date}")
+                    end_date = extracted_report_date
+                    start_date = extracted_report_date
+                else:
+                    print_step("邮件数据准备", f"⚠️ 无法从文件名提取日期，使用當前日期")
+            
+            # 如果仍然没有日期，使用當前日期
+            if end_date is None:
+                end_date = datetime.now().strftime("%Y-%m-%d")
+            elif hasattr(end_date, 'strftime'):
+                end_date = end_date.strftime("%Y-%m-%d")
+                
+            if start_date is None:
+                start_date = end_date
+            elif hasattr(start_date, 'strftime'):
+                start_date = start_date.strftime("%Y-%m-%d")
         
         # 从Excel文件中计算真实的销售总额
         real_total_amount = self._calculate_sales_amount_from_excel(file_path)
@@ -731,7 +757,17 @@ class EmailSender:
     
     def _create_partner_email_message(self, partner_name, email_data, file_paths, receivers, feishu_info, report_date=None, cc_email=None):
         """创建Partner邮件消息"""
-        # 生成邮件主题 - 使用日期範圍格式而非時間戳
+        # 优先使用从文件名中提取的报表日期，而不是当前日期
+        if file_paths and len(file_paths) > 0:
+            # 从文件名中提取报表日期
+            extracted_report_date = self._extract_report_date_from_filename(file_paths[0])
+            if extracted_report_date:
+                report_date = extracted_report_date
+                print_step("邮件日期", f"📅 使用文件名中的报表日期: {report_date}")
+            else:
+                print_step("邮件日期", f"⚠️ 无法从文件名提取日期，使用传入的report_date: {report_date}")
+        
+        # 生成邮件主题 - 使用报表日期而非当前日期
         start_date = email_data.get('start_date', report_date or datetime.now().strftime("%Y-%m-%d"))
         end_date = email_data.get('end_date', report_date or datetime.now().strftime("%Y-%m-%d"))
         
@@ -759,6 +795,32 @@ class EmailSender:
         self._handle_attachments_by_mode(msg, file_paths, feishu_info)
         
         return msg
+
+    def _extract_report_date_from_filename(self, file_path: str) -> Optional[str]:
+        """从文件名中提取报表日期"""
+        try:
+            import re
+            filename = os.path.basename(file_path)
+            
+            # 匹配8位数字日期格式（YYYYMMDD）
+            match = re.search(r'(\d{8})', filename)
+            if match:
+                date_str = match.group(1)
+                # 格式化为 YYYY-MM-DD
+                formatted_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+                return formatted_date
+            
+            # 如果没有找到8位数字，尝试其他日期格式
+            # 匹配 YYYY-MM-DD 格式
+            match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+            if match:
+                return match.group(1)
+            
+            return None
+            
+        except Exception as e:
+            print_step("日期提取", f"⚠️ 从文件名提取日期失败: {e}")
+            return None
 
     def _handle_attachments_by_mode(self, msg, file_paths, feishu_info):
         """根據配置的郵件模式處理附件"""
@@ -938,6 +1000,25 @@ class EmailSender:
         start_date = email_data.get('start_date', '')
         end_date = email_data.get('end_date', '')
         report_date = email_data.get('report_date', end_date)  # 使用 end_date 作為默認值
+        
+        # 🎯 修復：僅在缺少 start_date/end_date 時才使用文件名中的日期
+        # 避免覆蓋已經正確設置的日期參數
+        if not start_date or not end_date:
+            if 'file_paths' in email_data and email_data['file_paths']:
+                extracted_report_date = self._extract_report_date_from_filename(email_data['file_paths'][0])
+                if extracted_report_date:
+                    if not start_date:
+                        start_date = extracted_report_date
+                    if not end_date:
+                        end_date = extracted_report_date
+                    report_date = extracted_report_date
+                    print_step("邮件正文日期", f"📅 使用文件名中的报表日期補充缺失的日期: {report_date}")
+        
+        # 確保 Date Range 使用正確的日期參數
+        final_start_date = start_date
+        final_end_date = end_date
+        print_step("邮件正文日期", f"📅 最終使用的Date Range: {final_start_date} to {final_end_date}")
+        
         # 使用報告日期而不是當前日期
         completion_time = f"{report_date} {datetime.now().strftime('%H:%M:%S')}"
         main_file = email_data.get('main_file', f'{partner_name}_ConversionReport_{report_date}.xlsx')
@@ -1023,9 +1104,9 @@ class EmailSender:
         logger.info(f"   无效金额: {email_data.get('invalid_rejected_amount', '$0.00')}")
         
         body = body.replace('{{partner_name}}', partner_name)
-        body = body.replace('{{date_range}}', f"{start_date} to {end_date}")
-        body = body.replace('{{start_date}}', start_date)
-        body = body.replace('{{end_date}}', end_date)
+        body = body.replace('{{date_range}}', f"{final_start_date} to {final_end_date}")
+        body = body.replace('{{start_date}}', final_start_date)
+        body = body.replace('{{end_date}}', final_end_date)
         body = body.replace('{{total_records}}', f"{total_records:,}")
         body = body.replace('{{total_amount}}', total_amount)
         body = body.replace('{{main_file}}', main_file)
@@ -1099,7 +1180,15 @@ class EmailSender:
     def _generate_fallback_email_body(self, partner_name, email_data, feishu_info):
         """生成备用的简单邮件正文（当模板加载失败时使用）"""
         report_date = email_data.get('report_date', datetime.now().strftime("%Y-%m-%d"))
-        completion_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 优先使用从文件名中提取的报表日期
+        if 'file_paths' in email_data and email_data['file_paths']:
+            extracted_report_date = self._extract_report_date_from_filename(email_data['file_paths'][0])
+            if extracted_report_date:
+                report_date = extracted_report_date
+                print_step("备用邮件日期", f"📅 使用文件名中的报表日期: {report_date}")
+        
+        completion_time = f"{report_date} {datetime.now().strftime('%H:%M:%S')}"
         
         total_records = email_data.get('total_records', 0)
         total_amount = email_data.get('total_amount', '$0.00')
@@ -1170,14 +1259,20 @@ class EmailSender:
     
     def _generate_email_body(self, report_data, feishu_upload_result=None):
         """生成邮件正文（兼容性保留）"""
-        today = datetime.now().strftime("%Y-%m-%d")
+        # 优先使用从文件名中提取的报表日期
+        report_date = report_data.get('report_date', datetime.now().strftime("%Y-%m-%d"))
+        if 'file_paths' in report_data and report_data['file_paths']:
+            extracted_report_date = self._extract_report_date_from_filename(report_data['file_paths'][0])
+            if extracted_report_date:
+                report_date = extracted_report_date
+                print_step("兼容性邮件日期", f"📅 使用文件名中的报表日期: {report_date}")
         
         # 基本信息
         total_records = report_data.get('total_records', 0)
         total_amount = report_data.get('total_amount', '$0.00')
-        start_date = report_data.get('start_date', today)
-        end_date = report_data.get('end_date', today)
-        completion_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        start_date = report_data.get('start_date', report_date)
+        end_date = report_data.get('end_date', report_date)
+        completion_time = f"{report_date} {datetime.now().strftime('%H:%M:%S')}"
         
         # 构建邮件正文
         body = f"""
@@ -1384,7 +1479,15 @@ class EmailSender:
     def _generate_bytec_email_body(self, partner_name, email_data, feishu_info):
         """生成ByteC专用邮件正文"""
         report_date = email_data.get('report_date', datetime.now().strftime("%Y-%m-%d"))
-        completion_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 优先使用从文件名中提取的报表日期
+        if 'file_paths' in email_data and email_data['file_paths']:
+            extracted_report_date = self._extract_report_date_from_filename(email_data['file_paths'][0])
+            if extracted_report_date:
+                report_date = extracted_report_date
+                print_step("ByteC邮件日期", f"📅 使用文件名中的报表日期: {report_date}")
+        
+        completion_time = f"{report_date} {datetime.now().strftime('%H:%M:%S')}"
         
         # 从email_data获取基本信息
         start_date = email_data.get('start_date', report_date)
