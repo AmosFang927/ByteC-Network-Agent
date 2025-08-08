@@ -10,6 +10,7 @@ import os
 import argparse
 import asyncio
 import logging
+import pandas as pd
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 
@@ -23,9 +24,15 @@ import config
 try:
     from .database_manager import EnhancedDMPDatabaseManager
     from .api_config_manager import APIConfigManager
+    from .platform_detector import PlatformDetector
+    from .field_mapping_manager import FieldMappingManager
+    from .at_bm_data_processor import ATBMDataProcessor
 except ImportError:
     from agents.data_dmp_agent.database_manager import EnhancedDMPDatabaseManager
     from agents.data_dmp_agent.api_config_manager import APIConfigManager
+    from agents.data_dmp_agent.platform_detector import PlatformDetector
+    from agents.data_dmp_agent.field_mapping_manager import FieldMappingManager
+    from agents.data_dmp_agent.at_bm_data_processor import ATBMDataProcessor
 
 # API數據獲取器從api_agent導入
 try:
@@ -57,12 +64,878 @@ class DMPAgent:
         self.db_manager = EnhancedDMPDatabaseManager()
         self.api_fetcher = APIDataFetcher()
         self.config_manager = APIConfigManager()
+        
+        # 初始化新的组件
+        self.platform_detector = PlatformDetector()
+        self.field_mapping_manager = FieldMappingManager()
+        self.at_bm_processor = ATBMDataProcessor()
+        
+        # 初始化修正後數據存儲
+        self._corrected_data = None
+        
         self.stats = {
             'total_fetched': 0,
             'total_processed': 0,
             'total_stored': 0,
             'errors': []
         }
+    
+    def get_files_from_folder(self, folder_path: str) -> List[str]:
+        """從指定資料夾獲取所有Excel/CSV檔案"""
+        from pathlib import Path
+        
+        folder = Path(folder_path)
+        if not folder.exists():
+            logger.error(f"資料夾不存在: {folder_path}")
+            return []
+        
+        if not folder.is_dir():
+            logger.error(f"路徑不是資料夾: {folder_path}")
+            return []
+        
+        excel_files = []
+        for ext in ['*.xlsx', '*.xls', '*.csv']:
+            excel_files.extend(folder.glob(ext))
+        
+        # 按檔案名排序
+        excel_files.sort(key=lambda x: x.name)
+        
+        file_list = [str(f) for f in excel_files]
+        logger.info(f"📁 從資料夾 {folder_path} 找到 {len(file_list)} 個檔案")
+        for file in file_list:
+            logger.info(f"   - {Path(file).name}")
+        
+        return file_list
+    
+    def detect_platform_from_filename(self, filename: str) -> str:
+        """從檔案名檢測平台類型"""
+        # 使用新的PlatformDetector
+        detected_platform = self.platform_detector.detect_from_filename(filename)
+        
+        if detected_platform:
+            # 映射到内部平台标识符
+            platform_mapping = {
+                'access_trade': 'AT_BM',
+                'involve_asia': 'IA_BM',
+                'shopee': 'SHOPEE',
+                'tiktok_shop': 'TIKTOK_SHOP',
+                'linkshare': 'LS_MB'
+            }
+            return platform_mapping.get(detected_platform, detected_platform.upper())
+        
+        # 回退到原有的检测逻辑
+        filename_lower = filename.lower()
+        
+        if '_at_bm' in filename_lower:
+            return 'AT_BM'
+        elif '_ia_bm' in filename_lower:
+            return 'IA_BM'
+        elif '_ia_ot' in filename_lower:
+            return 'IA_OT'
+        elif '_ia_mb' in filename_lower:
+            return 'IA_MB'  # 修復：添加 IA_MB 檢測
+        else:
+            return 'UNKNOWN'
+    
+    def detect_platform_from_content(self, df) -> str:
+        """從檔案內容檢測平台類型"""
+        try:
+            # 使用新的PlatformDetector
+            detected_platform = self.platform_detector.detect_from_content(df)
+            
+            if detected_platform:
+                # 映射到内部平台标识符
+                platform_mapping = {
+                    'access_trade': 'AT_BM',
+                    'involve_asia': 'IA_BM',
+                    'shopee': 'SHOPEE',
+                    'tiktok_shop': 'TIKTOK_SHOP',
+                    'linkshare': 'LS_MB'
+                }
+                return platform_mapping.get(detected_platform, detected_platform.upper())
+            
+            # 回退到原有的检测逻辑
+            columns = [col.lower() for col in df.columns]
+            
+            # 檢查是否有 IA_OT 特有的欄位
+            if any('advertiser' in col for col in columns) and any('conversion date' in col for col in columns):
+                return 'IA_OT'
+            
+            # 檢查是否有 IA_BM 特有的欄位
+            if any('campaign name' in col for col in columns) and any('conversion time' in col for col in columns):
+                return 'AT_BM'
+            
+            # 檢查是否有 IA_MB 特有的欄位
+            if any('product id' in col for col in columns) and any('total price' in col for col in columns):
+                return 'IA_MB'
+            
+            return 'UNKNOWN'
+        except Exception as e:
+            logger.warning(f"內容檢測失敗: {e}")
+            return 'UNKNOWN'
+    
+    def _fix_csv_column_mismatch(self, df: pd.DataFrame, file_path: str) -> pd.DataFrame:
+        """
+        修正CSV文件中列數不匹配導致的數據錯位問題
+        
+        Args:
+            df: pandas讀取的DataFrame
+            file_path: CSV文件路徑
+            
+        Returns:
+            修正後的DataFrame
+        """
+        try:
+            # 檢查是否是特定的問題文件
+            if 'AT_BM' in file_path and 'ID-async-report-exporter' in file_path:
+                logger.warning("🔧 檢測到AT_BM文件的列數不匹配問題，正在修正...")
+                
+                # 直接讀取CSV文件來獲取正確的數據
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    header_line = f.readline().strip()
+                    data_lines = []
+                    for line in f:
+                        data_lines.append(line.strip())
+                
+                # 解析字段名稱
+                fields = [field.strip('"') for field in header_line.split(',')]
+                
+                # 找到關鍵字段的位置
+                conv_id_idx = fields.index('Conversion ID') if 'Conversion ID' in fields else None
+                reward_idx = fields.index('Reward') if 'Reward' in fields else None
+                
+                if conv_id_idx is not None and reward_idx is not None:
+                    # 提取正確的數據
+                    corrected_data = []
+                    for line in data_lines:
+                        if line.strip():  # 跳過空行
+                            values = [val.strip('"') for val in line.split(',')]
+                            if len(values) > max(conv_id_idx, reward_idx):
+                                corrected_data.append(values)
+                    
+                    if corrected_data:
+                        # 重建DataFrame，確保列數匹配
+                        max_cols = max(len(row) for row in corrected_data)
+                        
+                        # 調整字段名稱數量以匹配數據列數
+                        if len(fields) < max_cols:
+                            fields.extend([f'extra_col_{i}' for i in range(len(fields), max_cols)])
+                        elif len(fields) > max_cols:
+                            fields = fields[:max_cols]
+                        
+                        # 確保每行數據列數一致
+                        for i, row in enumerate(corrected_data):
+                            if len(row) < max_cols:
+                                corrected_data[i].extend([''] * (max_cols - len(row)))
+                            elif len(row) > max_cols:
+                                corrected_data[i] = row[:max_cols]
+                        
+                        # 創建新的DataFrame
+                        corrected_df = pd.DataFrame(corrected_data, columns=fields)
+                        
+                        # 轉換數值列（Product ID應保持為字符串）
+                        for col in corrected_df.columns:
+                            if col in ['Conversion ID', 'Reward', 'Total Price']:
+                                try:
+                                    corrected_df[col] = pd.to_numeric(corrected_df[col], errors='coerce')
+                                except:
+                                    pass
+                        
+                        logger.info(f"✅ AT_BM文件列數不匹配問題已修正")
+                        logger.info(f"   修正後Conversion ID: {corrected_df['Conversion ID'].head(3).tolist()}")
+                        logger.info(f"   修正後Reward: {corrected_df['Reward'].head(3).tolist()}")
+                        
+                        # 存儲修正後的數據供AT_BM處理器使用
+                        self._corrected_data = corrected_df
+                        
+                        return corrected_df
+            
+            # 如果不是問題文件或修正失敗，返回原始DataFrame
+            return df
+            
+        except Exception as e:
+            logger.warning(f"CSV文件修正失敗，使用原始數據: {e}")
+            return df
+    
+    def _apply_generic_unified_mapping(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        通用統一字段映射 - 適用於所有平台的通用轉換
+        當特定平台配置不可用時使用
+        """
+        logger.info("🔄 開始應用通用統一字段映射...")
+        
+        # 通用字段映射規則
+        generic_mappings = {
+            # 核心字段映射
+            'conversion_id': 'Conversion ID',
+            'partner': 'Partner', 
+            'platform': 'Platform',
+            'order_id': 'Order ID',
+            'status': 'Status',
+            
+            # 金額字段
+            'usd_sale_amount': 'Local Sale Amount',
+            'sale_amount': 'Local Sale Amount',
+            'usd_payout': 'Local Reward',
+            'payout': 'Local Reward',
+            
+            # 時間字段
+            'conversion_date': 'Datetime Conversion',
+            'datetime_conversion': 'Datetime Conversion',
+            'created_at': 'Datetime Conversion',
+            
+            # 追蹤字段
+            'aff_sub': 'Publisher Sub ID 1',
+            'aff_sub1': 'Publisher Sub ID 1', 
+            'aff_sub2': 'Publisher Sub ID 2',
+            'aff_sub3': 'Publisher Sub ID 3',
+            
+            # 廣告字段
+            'advertiser': 'Advertiser',
+            'advertiser_name': 'Advertiser',
+            'campaign_name': 'Campaign Name',
+            
+            # 其他字段
+            'tracking_id': 'Click ID',
+            'click_id': 'Click ID'
+        }
+        
+        # 創建新的DataFrame
+        unified_df = pd.DataFrame()
+        
+        # 應用映射
+        for original_col, unified_col in generic_mappings.items():
+            if original_col in df.columns:
+                unified_df[unified_col] = df[original_col]
+                logger.debug(f"映射: {original_col} -> {unified_col}")
+        
+        # 添加缺失的必需統一字段（使用默認值）
+        required_unified_fields = [
+            'Conversion ID', 'Partner', 'Platform', 'Order ID', 'Status',
+            'Local Sale Amount', 'Local Reward', 'Datetime Conversion',
+            'Publisher Sub ID 1', 'Publisher Sub ID 2', 'Publisher Sub ID 3',
+            'Advertiser', 'Campaign Name', 'Click ID'
+        ]
+        
+        for field in required_unified_fields:
+            if field not in unified_df.columns:
+                # 根據字段類型設置默認值
+                if field in ['Local Sale Amount', 'Local Reward']:
+                    unified_df[field] = 0.0
+                elif field in ['Conversion ID']:
+                    unified_df[field] = df.get('conversion_id', 'N/A')
+                elif field == 'Partner':
+                    unified_df[field] = df.get('partner', 'Unknown')
+                elif field == 'Platform':
+                    unified_df[field] = df.get('platform', 'Unknown')
+                else:
+                    unified_df[field] = ''
+                logger.debug(f"添加缺失字段: {field}")
+        
+        # 添加貨幣轉換字段
+        try:
+            from .currency_converter import currency_converter
+            
+            # USD Sale Amount <- Local Sale Amount IDR轉USD
+            if 'Local Sale Amount' in unified_df.columns:
+                unified_df['USD Sale Amount'] = unified_df['Local Sale Amount'].apply(
+                    lambda x: currency_converter.convert_idr_to_usd(float(x)) if pd.notna(x) and x != '' else 0.0
+                )
+                logger.debug("添加USD Sale Amount字段")
+            
+            # USD Reward <- Local Reward IDR轉USD  
+            if 'Local Reward' in unified_df.columns:
+                unified_df['USD Reward'] = unified_df['Local Reward'].apply(
+                    lambda x: currency_converter.convert_idr_to_usd(float(x)) if pd.notna(x) and x != '' else 0.0
+                )
+                logger.debug("添加USD Reward字段")
+                
+        except Exception as e:
+            logger.warning(f"貨幣轉換失敗: {e}")
+        
+        # 確保數據行數一致
+        if len(df) > 0 and len(unified_df) == 0:
+            # 如果沒有成功映射任何字段，至少保留基本結構
+            unified_df = pd.DataFrame(index=df.index)
+            for field in required_unified_fields:
+                unified_df[field] = 'N/A'
+        
+        logger.info(f"✅ 通用統一字段映射完成: {len(unified_df.columns)} 個統一字段，{len(unified_df)} 條記錄")
+        return unified_df
+    
+    async def process_file_data(self, file_path: str, platform: str = None, passthrough: bool = False) -> Dict[str, Any]:
+        """處理單個檔案數據"""
+        from pathlib import Path
+        
+        logger.info(f"🔄 開始處理檔案: {file_path}")
+        
+        # 如果沒有指定平台，從檔案名檢測
+        if not platform:
+            platform = self.detect_platform_from_filename(Path(file_path).name)
+            logger.info(f"🔍 檢測到平台: {platform}")
+        
+        result = {
+            'file_path': file_path,
+            'platform': platform,
+            'success': False,
+            'records_count': 0,
+            'processed_data': None
+        }
+        
+        try:
+            # 讀取檔案
+            import pandas as pd
+            
+            file_extension = Path(file_path).suffix.lower()
+            if file_extension in ['.xlsx', '.xls']:
+                df = pd.read_excel(file_path)
+            elif file_extension == '.csv':
+                # 嘗試不同編碼
+                encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'gbk']
+                df = None
+                for encoding in encodings:
+                    try:
+                        df = pd.read_csv(file_path, encoding=encoding)
+                        logger.info(f"成功使用 {encoding} 編碼讀取CSV檔案")
+                        break
+                    except (UnicodeDecodeError, UnicodeError):
+                        continue
+                
+                if df is None:
+                    raise ValueError("無法讀取CSV檔案，嘗試了多種編碼格式都失敗")
+                
+                # 🔧 特殊修正：檢查並修正CSV列數不匹配導致的數據錯位問題
+                df = self._fix_csv_column_mismatch(df, file_path)
+            else:
+                raise ValueError(f"不支援的檔案格式: {file_extension}")
+            
+            logger.info(f"📊 成功讀取數據，共 {len(df)} 行，{len(df.columns)} 列")
+            
+            # 如果沒有指定平台，先從檔案名檢測，再從內容檢測
+            if not platform:
+                platform = self.detect_platform_from_filename(Path(file_path).name)
+                if platform == 'UNKNOWN':
+                    # 嘗試從內容檢測平台
+                    content_platform = self.detect_platform_from_content(df)
+                    if content_platform != 'UNKNOWN':
+                        platform = content_platform
+                        logger.info(f"🔍 從檔案內容檢測到平台: {platform}")
+                    else:
+                        logger.warning(f"⚠️ 無法從檔案名或內容檢測平台，使用原始格式")
+                        logger.info(f"📋 檔案欄位: {list(df.columns)}")
+            
+            # 如果指定了強制平台，覆蓋檢測結果
+            if hasattr(self, 'force_platform') and self.force_platform:
+                platform = self.force_platform
+                logger.info(f"🔧 使用強制指定平台: {platform}")
+            
+            # 🎯 AT_BM特殊處理分支
+            if platform == 'AT_BM' and self.at_bm_processor.is_at_bm_file(Path(file_path).name):
+                logger.info("🚀 使用專門的AT_BM數據處理器...")
+                
+                try:
+                    # 🔧 特殊處理：如果已經修正了CSV數據，創建臨時文件給AT_BM處理器使用
+                    temp_file_path = file_path
+                    if hasattr(self, '_corrected_data') and self._corrected_data is not None:
+                        logger.info("🔧 使用修正後的數據創建臨時文件供AT_BM處理器使用")
+                        import tempfile
+                        temp_fd, temp_file_path = tempfile.mkstemp(suffix='.csv', prefix='corrected_at_bm_')
+                        try:
+                            self._corrected_data.to_csv(temp_file_path, index=False, encoding='utf-8')
+                            logger.info(f"✅ 臨時修正文件已創建: {temp_file_path}")
+                        except:
+                            os.close(temp_fd)
+                            temp_file_path = file_path
+                        else:
+                            os.close(temp_fd)
+                    
+                    # 使用AT_BM數據處理器進行專門處理
+                    at_bm_result = self.at_bm_processor.process_at_bm_file(
+                        temp_file_path, 
+                        output_dir="output"
+                    )
+                    
+                    # 清理臨時文件
+                    if temp_file_path != file_path and os.path.exists(temp_file_path):
+                        try:
+                            os.unlink(temp_file_path)
+                            logger.info("✅ 臨時文件已清理")
+                        except:
+                            pass
+                    
+                    if at_bm_result['success']:
+                        logger.info("✅ AT_BM專門處理完成")
+                        
+                        # 保存AT_BM處理結果文件路徑供passthrough使用
+                        self._current_at_bm_output_file = at_bm_result['output_file']
+                        logger.info(f"📁 設置AT_BM處理結果文件: {self._current_at_bm_output_file}")
+                        
+                        # 讀取處理後的數據
+                        processed_df = pd.read_csv(at_bm_result['output_file'])
+                        
+                        # 應用mockup處理
+                        processed_data = await self._apply_mockup_processing(
+                            processed_df.to_dict('records'), 
+                            platform
+                        )
+                        
+                        result['success'] = True
+                        result['records_count'] = len(processed_df)
+                        result['processed_data'] = processed_data
+                        result['at_bm_processing'] = at_bm_result
+                        result['output_file'] = at_bm_result['output_file']
+                        
+                        logger.info(f"✅ AT_BM檔案處理完成: {file_path}")
+                        logger.info(f"📄 輸出檔案: {at_bm_result['output_file']}")
+                        return result
+                        
+                    else:
+                        logger.error(f"❌ AT_BM專門處理失敗: {at_bm_result.get('error', 'Unknown error')}")
+                        # 继续使用通用处理流程
+                        
+                except Exception as e:
+                    logger.error(f"❌ AT_BM專門處理器異常: {e}")
+                    # 继续使用通用处理流程
+            
+            # 使用字段映射管理器進行數據轉換
+            try:
+                # 將内部平台标识符映射回字段映射管理器使用的标识符
+                platform_mapping = {
+                    'AT_BM': 'access_trade',
+                    'IA_BM': 'involve_asia',
+                    'IA_MB': 'involve_asia',
+                    'IA_OT': 'involve_asia',
+                    'SHOPEE': 'shopee',
+                    'TIKTOK_SHOP': 'tiktok_shop',
+                    'LS_MB': 'linkshare'
+                }
+                
+                mapping_platform = platform_mapping.get(platform, platform.lower())
+                
+                # 使用字段映射管理器進行映射
+                mapped_df, mapping_info = self.field_mapping_manager.map_dataframe_columns(df, mapping_platform)
+                
+                if not mapped_df.empty:
+                    logger.info(f"✅ 使用字段映射管理器成功映射 {len(mapping_info['mapped_columns'])} 個欄位")
+                    logger.info(f"📋 映射欄位: {[m['source'] + ' -> ' + m['target'] for m in mapping_info['mapped_columns']]}")
+                    if mapping_info['unmapped_columns']:
+                        logger.warning(f"⚠️ 未映射欄位: {mapping_info['unmapped_columns']}")
+                    
+                    # 使用映射後的DataFrame
+                    df = mapped_df
+                else:
+                    logger.warning(f"⚠️ 字段映射失敗，使用原有轉換邏輯")
+                    # 回退到原有的轉換邏輯
+                    if platform == 'AT_BM':
+                        df = await self._convert_at_bm_to_ia_bm(df)
+                    elif platform in ['IA_BM', 'IA_MB', 'IA_OT']:
+                        logger.info(f"✅ {platform} 格式已經是標準格式，無需轉換")
+                    else:
+                        logger.warning(f"⚠️ 未知平台 {platform}，使用原始格式")
+                        
+            except Exception as e:
+                logger.error(f"❌ 字段映射失敗: {e}")
+                # 回退到原有的轉換邏輯
+                if platform == 'AT_BM':
+                    df = await self._convert_at_bm_to_ia_bm(df)
+                elif platform in ['IA_BM', 'IA_MB', 'IA_OT']:
+                    logger.info(f"✅ {platform} 格式已經是標準格式，無需轉換")
+                else:
+                    logger.warning(f"⚠️ 未知平台 {platform}，使用原始格式")
+            
+            # 轉換為字典格式並添加 Partner 欄位
+            records = df.to_dict('records')
+            
+            # 為每個記錄添加 Partner 欄位
+            for record in records:
+                # 優先使用文件中已有的 Partner 欄位，如果沒有則根據 Source 重新分類
+                partner = record.get('Partner')
+                if not partner or partner == 'Unknown':
+                    # 根據 Publisher Sub ID 1 重新分類 Partner
+                    source = record.get('Publisher Sub ID 1', '')
+                    if source:
+                        partner = self._classify_partner_by_source(source)
+                    else:
+                        partner = 'Unknown'
+                        
+                record['partner'] = partner
+            
+            # 應用 mockup 處理
+            processed_data = await self._apply_mockup_processing(records, platform)
+            
+            # 最終驗證和摘要
+            await self._generate_final_mockup_summary(processed_data, platform)
+            
+            # 🔧 更新 Passthrough 文件（如果存在）
+            await self._update_passthrough_file_with_mockup(processed_data, file_path)
+            
+            result['success'] = True
+            result['records_count'] = len(df)
+            result['processed_data'] = processed_data
+            
+            logger.info(f"✅ 檔案處理完成: {file_path}")
+            
+        except Exception as e:
+            error_msg = f"檔案處理失敗: {file_path} - {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            result['error'] = str(e)
+        
+        return result
+    
+    async def _convert_at_bm_to_ia_bm(self, df):
+        """將 AT_BM 格式轉換為 IA_BM 格式（使用動態匯率）"""
+        logger.info("🔄 開始 AT_BM 到 IA_BM 格式轉換...")
+        
+        # 欄位映射
+        column_mapping = {
+            'Campaign Name': 'Advertiser',
+            'Conversion Time': 'Conversion Date',
+            'Product ID': 'Order ID',
+            'Total Price': 'Local Sale Amount',
+            'aff_sub': 'Publisher Sub ID 1',
+            'Category ID': 'Advertiser Sub ID 3'
+        }
+        
+        # 重命名欄位
+        df = df.rename(columns=column_mapping)
+        
+        # 新增 Sale Amount (USD) 欄位 - 印尼盾轉美元（使用動態匯率）
+        if 'Local Sale Amount' in df.columns:
+            try:
+                # 動態獲取匯率
+                exchange_rate = await self._get_usd_idr_exchange_rate()
+                df['Sale Amount (USD)'] = (df['Local Sale Amount'] / exchange_rate).round(2)
+                logger.info(f"💱 已添加 USD 金額欄位，使用動態匯率: 1 USD = {exchange_rate} IDR")
+            except Exception as e:
+                logger.error(f"❌ 獲取匯率失敗: {e}")
+                # 使用預設匯率作為備用
+                default_rate = 15000
+                df['Sale Amount (USD)'] = (df['Local Sale Amount'] / default_rate).round(2)
+                logger.info(f"💱 使用預設匯率: 1 USD = {default_rate} IDR")
+        
+        logger.info("✅ AT_BM 格式轉換完成")
+        return df
+    
+    async def _get_usd_idr_exchange_rate(self) -> float:
+        """動態獲取 USD/IDR 匯率"""
+        import aiohttp
+        import asyncio
+        
+        # 使用多個免費匯率API作為備用
+        api_endpoints = [
+            {
+                'url': 'https://api.exchangerate-api.com/v4/latest/USD',
+                'parser': lambda data: data['rates']['IDR']
+            },
+            {
+                'url': 'https://api.fxratesapi.com/latest?base=USD&symbols=IDR',
+                'parser': lambda data: data['rates']['IDR']
+            },
+            {
+                'url': 'https://open.er-api.com/v6/latest/USD',
+                'parser': lambda data: data['rates']['IDR']
+            }
+        ]
+        
+        # 預設匯率（作為備用）
+        default_rate = 15000.0
+        
+        for api in api_endpoints:
+            try:
+                logger.info(f"🌐 嘗試從 API 獲取匯率: {api['url']}")
+                
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                    async with session.get(api['url']) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            rate = api['parser'](data)
+                            
+                            if rate and isinstance(rate, (int, float)) and rate > 0:
+                                logger.info(f"✅ 成功獲取匯率: 1 USD = {rate} IDR")
+                                return float(rate)
+                            else:
+                                logger.warning(f"⚠️ API 返回無效匯率: {rate}")
+                                continue
+                        else:
+                            logger.warning(f"⚠️ API 請求失敗: HTTP {response.status}")
+                            continue
+                            
+            except asyncio.TimeoutError:
+                logger.warning(f"⚠️ API 請求超時: {api['url']}")
+                continue
+            except Exception as e:
+                logger.warning(f"⚠️ API 請求異常: {api['url']} - {str(e)}")
+                continue
+        
+        # 如果所有API都失敗，使用預設匯率
+        logger.warning(f"⚠️ 所有匯率API都失敗，使用預設匯率: 1 USD = {default_rate} IDR")
+        return default_rate
+    
+    def _generate_merged_filename(self, file_paths: List[str]) -> str:
+        """生成合併檔案名稱"""
+        from pathlib import Path
+        from datetime import datetime
+        
+        # 獲取第一個檔案名作為基礎
+        first_file = Path(file_paths[0]).stem
+        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # 生成合併檔案名
+        merged_filename = f"{first_file}_merged_{current_time}.csv"
+        
+        logger.info(f"📝 生成合併檔案名: {merged_filename}")
+        return merged_filename
+    
+    def _save_merged_file(self, data: List[Dict], filename: str):
+        """保存合併檔案"""
+        import pandas as pd
+        from pathlib import Path
+        
+        try:
+            # 轉換為 DataFrame
+            df = pd.DataFrame(data)
+            
+            # 確保輸出目錄存在
+            output_dir = Path("output")
+            output_dir.mkdir(exist_ok=True)
+            
+            # 保存檔案
+            output_path = output_dir / filename
+            df.to_csv(output_path, index=False, encoding='utf-8')
+            
+            logger.info(f"💾 合併檔案已保存: {output_path}")
+            logger.info(f"📊 檔案包含 {len(df)} 行數據，{len(df.columns)} 個欄位")
+            
+        except Exception as e:
+            error_msg = f"保存合併檔案失敗: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            raise Exception(error_msg)
+    
+    async def process_multiple_files(self, file_paths: List[str], passthrough: bool = False) -> List[Dict[str, Any]]:
+        """處理多個檔案"""
+        from pathlib import Path
+        
+        logger.info(f"🚀 開始批量處理 {len(file_paths)} 個檔案")
+        
+        results = []
+        for file_path in file_paths:
+            # 檢測平台
+            platform = self.detect_platform_from_filename(file_path)
+            logger.info(f"📋 檔案: {Path(file_path).name} -> 平台: {platform}")
+            
+            # 處理檔案
+            result = await self.process_file_data(file_path, platform, passthrough)
+            results.append(result)
+        
+        # 合併所有數據
+        all_data = []
+        for result in results:
+            if result['success'] and result['processed_data']:
+                all_data.extend(result['processed_data'])
+        
+        logger.info(f"📊 合併完成，總共 {len(all_data)} 條記錄")
+        
+        # 生成合併檔案名稱
+        merged_filename = self._generate_merged_filename(file_paths)
+        
+        # 保存合併檔案
+        if all_data and not passthrough:
+            self._save_merged_file(all_data, merged_filename)
+        
+        # 🎯 Passthrough模式特殊處理：為AT_BM文件生成Reporter Agent格式的DMP temp文件
+        if passthrough and len(file_paths) == 1:
+            file_path = file_paths[0]
+            platform = self.detect_platform_from_filename(file_path)
+            
+            if platform and 'AT_BM' in platform:
+                logger.info("🎯 AT_BM Passthrough模式: 生成Reporter Agent格式的DMP temp文件...")
+                
+                # 查找最新的AT_BM處理結果文件
+                at_bm_processed_file = None
+                if hasattr(self, '_current_at_bm_output_file') and self._current_at_bm_output_file:
+                    at_bm_processed_file = self._current_at_bm_output_file
+                    logger.info(f"🔍 找到AT_BM處理結果文件: {at_bm_processed_file}")
+                
+                if at_bm_processed_file and os.path.exists(at_bm_processed_file):
+                    await self._generate_reporter_format_temp_file(at_bm_processed_file, platform, all_data)
+                else:
+                    logger.warning("⚠️ 未找到AT_BM處理結果文件，跳過Reporter格式轉換")
+        
+        return {
+            'individual_results': results,
+            'merged_data': all_data,
+            'total_records': len(all_data),
+            'merged_filename': merged_filename
+        }
+    
+    async def _generate_reporter_format_temp_file(self, at_bm_processed_file: str, platform: str, processed_conversions: List[Dict]) -> str:
+        """
+        為Reporter Agent生成正確格式的DMP temp文件
+        
+        Args:
+            at_bm_processed_file: AT_BM處理器輸出的文件路徑
+            platform: 平台名稱
+            processed_conversions: 處理後的轉化數據
+            
+        Returns:
+            生成的DMP temp文件路徑
+        """
+        try:
+            import pandas as pd
+            from datetime import datetime
+            
+            logger.info("🔄 開始生成Reporter Agent格式的DMP temp文件...")
+            
+            # 讀取AT_BM處理器的輸出
+            df = pd.read_csv(at_bm_processed_file)
+            logger.info(f"📊 讀取AT_BM文件: {len(df)} 行, {len(df.columns)} 列")
+            
+            # 添加Reporter Agent期望的關鍵字段
+            if 'Partner' not in df.columns:
+                # 根據Source映射到正確的Partner
+                import sys
+                import os
+                sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+                import config
+                
+                df['Partner'] = df.get('Publisher Sub ID 1', 'Unknown').apply(
+                    lambda source: config.match_source_to_partner(source) if pd.notna(source) else 'AT_BM'
+                )
+                logger.info("✅ 添加Partner字段: 基於Source映射")
+                
+                # 統計Partner分佈
+                partner_dist = df['Partner'].value_counts().to_dict()
+                logger.info(f"📊 Partner分佈: {partner_dist}")
+            
+            if 'Source' not in df.columns:
+                # 使用Publisher Sub ID 1作為Source，如果沒有則使用默認值
+                df['Source'] = df.get('Publisher Sub ID 1', 'AT_BM_Source')
+                logger.info("✅ 添加Source字段: 基於Publisher Sub ID 1")
+            
+            if 'USD Payout' not in df.columns and 'Local Reward' in df.columns:
+                # 將Local Reward轉換為USD Payout (IDR to USD)
+                try:
+                    from .currency_converter import currency_converter
+                    df['USD Payout'] = df['Local Reward'].apply(
+                        lambda x: currency_converter.convert_idr_to_usd(float(x)) if pd.notna(x) and x != '' else 0.0
+                    )
+                    logger.info("✅ 添加USD Payout字段: 基於Local Reward IDR轉USD")
+                except Exception as e:
+                    logger.warning(f"⚠️ 貨幣轉換失敗，使用固定匯率: {e}")
+                    df['USD Payout'] = (df['Local Reward'] / 15000).round(2)
+            
+            # 確保Status字段存在
+            if 'Status' not in df.columns:
+                df['Status'] = 'PENDING'
+                logger.info("✅ 添加Status字段: PENDING")
+            
+            # 💰 計算mockup前的總金額
+            original_total_usd = df['USD Sale Amount'].sum()
+            logger.info(f"💰 Mockup前總USD Sale Amount: ${original_total_usd:,.2f}")
+            
+            # 應用mockup調整
+            logger.info("🔄 對Reporter格式數據應用Mockup調整...")
+            unified_conversions = df.to_dict('records')
+            
+            # 轉換為內部格式以應用mockup
+            internal_conversions = []
+            for conv in unified_conversions:
+                internal_conv = {
+                    'conversion_id': conv.get('Conversion ID', conv.get('conversion_id')),
+                    'usd_sale_amount': conv.get('USD Sale Amount', conv.get('sale_amount', 0)),
+                    'usd_payout': conv.get('USD Payout', conv.get('payout', 0)),
+                    'partner': conv.get('Partner', conv.get('partner', 'AT_BM')),
+                    'platform': 'AT_BM',
+                    # 保留所有原始字段
+                    **conv
+                }
+                internal_conversions.append(internal_conv)
+            
+            # 應用mockup調整
+            adjusted_conversions = await self._apply_mockup_processing(internal_conversions, platform)
+            
+            # 重新建立DataFrame，保持Reporter Agent期望格式
+            df = pd.DataFrame(adjusted_conversions)
+            
+            # 💰 計算mockup後的總金額
+            adjusted_total_usd = df['USD Sale Amount'].sum()
+            logger.info(f"💰 Mockup後總USD Sale Amount: ${adjusted_total_usd:,.2f}")
+            
+            # 💰 計算並顯示mockup影響匯總
+            difference = adjusted_total_usd - original_total_usd
+            percentage_change = (difference / original_total_usd * 100) if original_total_usd > 0 else 0
+            logger.info(f"💰 Mockup影響匯總:")
+            logger.info(f"   - 原始金額: ${original_total_usd:,.2f}")
+            logger.info(f"   - 調整後金額: ${adjusted_total_usd:,.2f}")
+            logger.info(f"   - 差額: ${difference:,.2f} ({percentage_change:+.2f}%)")
+            
+            # 按Partner統計mockup影響
+            if 'Partner' in df.columns:
+                partner_stats = df.groupby('Partner')['USD Sale Amount'].sum()
+                logger.info(f"💰 按Partner的金額分佈:")
+                for partner, amount in partner_stats.items():
+                    count = len(df[df['Partner'] == partner])
+                    logger.info(f"   - {partner}: ${amount:,.2f} ({count:,} 條記錄)")
+            
+            # 確保Reporter Agent期望的關鍵字段存在
+            reporter_field_mapping = {
+                'conversion_id': 'Conversion ID',
+                'partner': 'Partner', 
+                'platform': 'Platform',
+                'usd_sale_amount': 'USD Sale Amount',
+                'usd_payout': 'USD Payout'
+            }
+            
+            for internal_field, unified_field in reporter_field_mapping.items():
+                if internal_field in df.columns and unified_field not in df.columns:
+                    df[unified_field] = df[internal_field]
+            
+            # 確保Source字段存在
+            if 'Source' not in df.columns:
+                df['Source'] = df.get('Publisher Sub ID 1', 'AT_BM_Source')
+            
+            # 移除不需要呈現的字段
+            import sys
+            import os
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            import config
+            
+            # 獲取需要移除的字段列表
+            columns_to_remove = config.DMP_PASSTHROUGH_REMOVE_COLUMNS
+            existing_columns_to_remove = [col for col in columns_to_remove if col in df.columns]
+            
+            if existing_columns_to_remove:
+                df = df.drop(columns=existing_columns_to_remove)
+                logger.info(f"🗑️ 移除不需要呈現的字段: {existing_columns_to_remove}")
+            
+            logger.info(f"📊 清理後最終欄位數: {len(df.columns)}")
+            logger.info(f"📋 最終欄位: {list(df.columns)}")
+            
+            # 生成DMP temp文件
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file_path = f"output/DMP_temp_ByteC_{timestamp}.xlsx"
+            
+            with pd.ExcelWriter(output_file_path, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='Data', index=False)
+            
+            logger.info(f"✅ Reporter格式DMP temp文件生成完成: {output_file_path}")
+            logger.info(f"📊 最終格式: {len(df)} 行, {len(df.columns)} 列")
+            
+            # 驗證Reporter Agent期望的關鍵字段
+            required_fields = ['Partner', 'Source', 'USD Sale Amount', 'Status']
+            missing_fields = [field for field in required_fields if field not in df.columns]
+            if missing_fields:
+                logger.warning(f"⚠️ 缺少Reporter期望字段: {missing_fields}")
+            else:
+                logger.info("✅ 所有Reporter期望字段都已存在")
+            
+            return output_file_path
+            
+        except Exception as e:
+            logger.error(f"❌ 生成Reporter格式DMP temp文件失敗: {e}")
+            import traceback
+            logger.error(f"錯誤詳情: {traceback.format_exc()}")
+            return None
     
     async def initialize(self, skip_db_check: bool = False):
         """初始化DMP代理"""
@@ -164,6 +1037,32 @@ class DMPAgent:
             else:
                 raise ValueError(f"不支持的數據來源: {data_source}")
             
+            # 步驟2.5: 🎯 Partner映射處理 (修復FTK Mockup問题)
+            logger.info("=" * 60)
+            logger.info("🎯 步驟2.5: Partner映射處理")
+            logger.info("=" * 60)
+            
+            # 為每個轉化數據正確設置partner字段
+            import config
+            for conv in conversions:
+                # 如果沒有partner字段或partner為空，根據aff_sub1進行映射
+                aff_sub1 = conv.get('aff_sub1', '')
+                if not conv.get('partner') or conv.get('partner') == platform:
+                    if aff_sub1:
+                        mapped_partner = config.match_source_to_partner(aff_sub1)
+                        conv['partner'] = mapped_partner
+                        logger.debug(f"映射: {aff_sub1} → Partner: {mapped_partner}")
+                    else:
+                        conv['partner'] = platform  # 保持原有默認行為
+            
+            # 統計Partner分佈
+            partner_counts = {}
+            for conv in conversions:
+                partner = conv.get('partner', 'Unknown')
+                partner_counts[partner] = partner_counts.get(partner, 0) + 1
+            
+            logger.info(f"📊 Partner分佈: {partner_counts}")
+            
             # 步驟3: 💰 重點Mockup數據處理
             logger.info("=" * 60)
             logger.info("💰 步驟3: 開始Mockup數據處理 (重點步驟)")
@@ -203,150 +1102,246 @@ class DMPAgent:
             logger.info(f"   💸 總佣金: ${adjusted_total_payout:,.2f} USD")
             logger.info(f"   📈 平均銷售額: ${adjusted_avg_sale:,.2f} USD")
             logger.info(f"   📈 平均佣金: ${adjusted_avg_payout:,.2f} USD")
-            if adjusted_total_sale > 0:
-                commission_rate = (adjusted_total_payout / adjusted_total_sale) * 100
-                logger.info(f"   📋 平均佣金率: {commission_rate:.2f}%")
             
-            logger.info("")
-            logger.info("🔄 Mockup調整變化:")
-            sale_change = adjusted_total_sale - original_total_sale
-            payout_change = adjusted_total_payout - original_total_payout
-            sale_change_pct = ((adjusted_total_sale - original_total_sale) / original_total_sale * 100) if original_total_sale > 0 else 0
-            payout_change_pct = ((adjusted_total_payout - original_total_payout) / original_total_payout * 100) if original_total_payout > 0 else 0
-            
-            logger.info(f"   💰 銷售額變化: ${sale_change:+,.2f} USD ({sale_change_pct:+.1f}%)")
-            logger.info(f"   💸 佣金變化: ${payout_change:+,.2f} USD ({payout_change_pct:+.1f}%)")
-            logger.info("=" * 60)
-            
-            # 步驟4: 存儲到數據庫（使用高性能優化批量插入） - 根據passthrough模式決定是否執行
-            stored_ids = []
-            output_file_path = None
-            
+            # 步驟4: 數據存儲或文件生成
             if passthrough:
-                logger.info("🔄 Passthrough模式: 跳過Cloud SQL存儲，生成標準化temp excel文件")
+                logger.info("📁 Passthrough模式: 生成標準化temp excel文件...")
                 
-                # 生成標準化temp excel文件
                 try:
                     import pandas as pd
-                    from datetime import datetime
-                    import os
-                    import re
                     
-                    # 導入配置
-                    import config
+                    # 🎯 檢查是否有at_bm_processed文件（統一字段格式）
+                    at_bm_processed_file = None
+                    if hasattr(self, '_current_at_bm_output_file') and self._current_at_bm_output_file:
+                        at_bm_processed_file = self._current_at_bm_output_file
+                        logger.info(f"🔍 找到AT_BM處理結果文件: {at_bm_processed_file}")
                     
-                    # 創建輸出目錄
-                    output_dir = "output"
-                    os.makedirs(output_dir, exist_ok=True)
+                    if at_bm_processed_file and os.path.exists(at_bm_processed_file):
+                        # ✅ 直接使用AT_BM處理器的統一字段格式結果並轉換為Reporter Agent期望格式
+                        logger.info("🎯 使用AT_BM處理器結果並轉換為Reporter Agent格式...")
+                        df = pd.read_csv(at_bm_processed_file)
+                        
+                        # 🔧 轉換為Reporter Agent期望的字段格式
+                        logger.info("🔄 轉換為Reporter Agent期望的字段格式...")
+                        
+                        # 添加Reporter Agent期望的關鍵字段
+                        if 'Partner' not in df.columns:
+                            df['Partner'] = 'AT_BM'  # 設置Partner為AT_BM
+                        
+                        if 'Source' not in df.columns:
+                            # 使用Publisher Sub ID 1作為Source，如果沒有則使用默認值
+                            df['Source'] = df.get('Publisher Sub ID 1', 'AT_BM_Source')
+                        
+                        if 'USD Sale Amount' not in df.columns:
+                            # 將Local Sale Amount轉換為USD Sale Amount (IDR to USD)
+                            if 'Local Sale Amount' in df.columns:
+                                try:
+                                    # 使用動態貨幣轉換
+                                    from .currency_converter import currency_converter
+                                    df['USD Sale Amount'] = df['Local Sale Amount'].apply(
+                                        lambda x: currency_converter.convert_idr_to_usd(float(x)) if pd.notna(x) and x != '' else 0.0
+                                    )
+                                    logger.info("✅ 成功轉換Local Sale Amount為USD Sale Amount")
+                                except Exception as e:
+                                    logger.warning(f"⚠️ 貨幣轉換失敗，使用默認匯率: {e}")
+                                    # 使用固定匯率作為備用 (1 USD = 15000 IDR)
+                                    df['USD Sale Amount'] = (df['Local Sale Amount'] / 15000).round(2)
+                            else:
+                                df['USD Sale Amount'] = 0.0
+                        
+                        if 'USD Payout' not in df.columns:
+                            # 將Local Reward轉換為USD Payout (IDR to USD)
+                            if 'Local Reward' in df.columns:
+                                try:
+                                    from .currency_converter import currency_converter
+                                    df['USD Payout'] = df['Local Reward'].apply(
+                                        lambda x: currency_converter.convert_idr_to_usd(float(x)) if pd.notna(x) and x != '' else 0.0
+                                    )
+                                    logger.info("✅ 成功轉換Local Reward為USD Payout")
+                                except Exception as e:
+                                    logger.warning(f"⚠️ 貨幣轉換失敗，使用默認匯率: {e}")
+                                    df['USD Payout'] = (df['Local Reward'] / 15000).round(2)
+                            else:
+                                df['USD Payout'] = 0.0
+                        
+                        # 確保Status字段存在
+                        if 'Status' not in df.columns:
+                            df['Status'] = 'PENDING'
+                        
+                        # 應用mockup調整
+                        logger.info("🔄 對Reporter格式數據應用Mockup調整...")
+                        unified_conversions = df.to_dict('records')
+                        
+                        # 轉換為內部格式以應用mockup
+                        internal_conversions = []
+                        for conv in unified_conversions:
+                            internal_conv = {
+                                'conversion_id': conv.get('Conversion ID', conv.get('conversion_id')),
+                                'usd_sale_amount': conv.get('USD Sale Amount', conv.get('sale_amount', 0)),
+                                'usd_payout': conv.get('USD Payout', conv.get('payout', 0)),
+                                'partner': conv.get('Partner', conv.get('partner', 'AT_BM')),
+                                'platform': conv.get('Platform', 'AT_BM'),
+                                # 保留所有原始字段
+                                **conv
+                            }
+                            internal_conversions.append(internal_conv)
+                        
+                        # 應用mockup調整
+                        adjusted_conversions = await self._apply_mockup_processing(internal_conversions, platform)
+                        
+                        # 重新建立DataFrame，保持Reporter Agent期望格式
+                        df = pd.DataFrame(adjusted_conversions)
+                        
+                        # 確保Reporter Agent期望的關鍵字段存在
+                        reporter_field_mapping = {
+                            'conversion_id': 'Conversion ID',
+                            'partner': 'Partner', 
+                            'platform': 'Platform',
+                            'usd_sale_amount': 'USD Sale Amount',
+                            'usd_payout': 'USD Payout'
+                        }
+                        
+                        for internal_field, unified_field in reporter_field_mapping.items():
+                            if internal_field in df.columns:
+                                # 🔧 強制使用 mockup 調整後的值，覆蓋原始值
+                                if internal_field == 'usd_sale_amount' and unified_field == 'USD Sale Amount':
+                                    logger.info(f"🔄 強制使用 mockup 調整後的金額: {internal_field} -> {unified_field}")
+                                    df[unified_field] = df[internal_field]
+                                elif unified_field not in df.columns:
+                                    df[unified_field] = df[internal_field]
+                        
+                        # 確保Source字段存在
+                        if 'Source' not in df.columns:
+                            df['Source'] = df.get('Publisher Sub ID 1', 'AT_BM_Source')
+                        
+                        logger.info(f"✅ AT_BM轉Reporter格式完成，欄位數: {len(df.columns)}")
+                        logger.info(f"📋 Reporter期望字段: {list(df.columns)}")
+                        
+                        # 驗證Reporter Agent期望的關鍵字段
+                        required_fields = ['Partner', 'Source', 'USD Sale Amount', 'Status']
+                        missing_fields = [field for field in required_fields if field not in df.columns]
+                        if missing_fields:
+                            logger.warning(f"⚠️ 缺少Reporter期望字段: {missing_fields}")
+                        else:
+                            logger.info("✅ 所有Reporter期望字段都已存在")
                     
-                    # 生成文件名
+                    else:
+                        # 🔄 回退到原始邏輯：從processed_conversions重新映射
+                        logger.warning("⚠️ 未找到AT_BM處理結果，使用原始映射邏輯...")
+                        raw_df = pd.DataFrame(processed_conversions)
+                        
+                        logger.info(f"📊 從processed_conversions創建原始DataFrame，欄位數: {len(raw_df.columns)}")
+                        logger.info(f"📋 原始字段: {list(raw_df.columns)}")
+                        logger.info(f"📊 數據行數: {len(raw_df)}")
+                        
+                        # 應用統一字段映射
+                        from agents.data_dmp_agent.field_mapping_manager import FieldMappingManager
+                        from agents.data_dmp_agent.unified_field_mapper import UnifiedFieldMapper
+                        
+                        # 使用正確的平台映射
+                        platform_mapping = {
+                            'AT_BM': 'access_trade',
+                            'IA_BM': 'involve_asia',
+                            'IA_MB': 'involve_asia',
+                            'IA_OT': 'involve_asia',
+                            'SHOPEE': 'shopee',
+                            'TIKTOK_SHOP': 'tiktok_shop',
+                            'LS_MB': 'linkshare'
+                        }
+                        mapping_platform = platform_mapping.get(platform, platform.lower())
+                        logger.info(f"🔄 Platform映射: {platform} -> {mapping_platform}")
+                        
+                        field_manager = FieldMappingManager()
+                        mapping_info = field_manager.get_platform_mapping_info(mapping_platform)
+                        
+                        if mapping_info and mapping_info.get('field_mappings'):
+                            logger.info(f"🔄 應用統一字段映射到passthrough數據...")
+                            unified_mapper = UnifiedFieldMapper()
+                            df = unified_mapper.map_dataframe_to_unified_fields(
+                                raw_df, mapping_info['field_mappings']
+                            )
+                            logger.info(f"✅ 統一字段映射完成，新欄位數: {len(df.columns)}")
+                            logger.info(f"📋 統一字段: {list(df.columns)}")
+                        else:
+                            logger.warning(f"⚠️ 無法獲取字段映射配置 ({mapping_platform})，使用通用統一字段映射...")
+                            # 🎯 通用統一字段映射 - 適用於所有平台
+                            df = self._apply_generic_unified_mapping(raw_df)
+                            logger.info(f"✅ 通用統一字段映射完成，新欄位數: {len(df.columns)}")
+                            logger.info(f"📋 統一字段: {list(df.columns)}")
+                    
+                    logger.info(f"📊 passthrough模式：最終數據格式，數據行數: {len(df)}")
+                    
+                    # 步驟5: 保存標準化的Excel文件
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    if platform:
-                        output_filename = f"DMP_temp_{platform}_{timestamp}.xlsx"
+                    
+                    # 🔧 使用主要Partner名稱而不是platform名稱 (修復文件名匹配問題)
+                    if partner_counts:
+                        # 使用數據最多的Partner作為文件名
+                        main_partner = max(partner_counts.items(), key=lambda x: x[1])[0]
+                        if main_partner != platform:  # 只有當不是API平台名稱時才使用Partner名稱
+                            output_file_path = f"output/DMP_temp_{main_partner}_{timestamp}.xlsx"
+                            logger.info(f"📁 使用主要Partner名稱生成文件: {main_partner} (數據量: {partner_counts[main_partner]})")
+                        else:
+                            output_file_path = f"output/DMP_temp_{platform}_{timestamp}.xlsx"
                     else:
-                        output_filename = f"DMP_temp_file_import_{timestamp}.xlsx"
-                    output_file_path = os.path.join(output_dir, output_filename)
+                        output_file_path = f"output/DMP_temp_{platform}_{timestamp}.xlsx"
                     
-                    # 步驟1: 轉換數據為DataFrame
-                    df = pd.DataFrame(processed_conversions)
-                    
-                    # 步驟2: 智能標準化欄位名稱 (只對實際存在的欄位進行映射)
-                    column_mapping = config.get_dmp_column_mapping()
-                    
-                    # 只對實際存在於DataFrame中的欄位進行映射
-                    applicable_mapping = {old_name: new_name 
-                                        for old_name, new_name in column_mapping.items() 
-                                        if old_name in df.columns}
-                    
-                    if applicable_mapping:
-                        df = df.rename(columns=applicable_mapping)
-                        logger.info(f"🔄 已應用欄位名稱標準化: {list(applicable_mapping.keys())} → {list(applicable_mapping.values())}")
-                    else:
-                        logger.info("🔄 無需欄位名稱標準化 (數據可能已是標準格式)")
-                    
-                    # 步驟3: 確保標準欄位存在並填充預設值
-                    standard_columns = config.get_standard_report_columns()
-                    default_values = config.get_column_default_values()
-                    
-                    for col in standard_columns:
-                        if col in ['Partner', 'Source']:
-                            continue  # 這兩個欄位稍後單獨處理
-                        if col not in df.columns:
-                            df[col] = default_values.get(col, '')
-                            logger.info(f"➕ 添加缺失欄位: {col}")
-                    
-                    # 步驟4: 添加Source欄位 (根據數據來源動態選擇)
-                    # Passthrough模式：數據來自temp excel，使用標準化後的列名
-                    # Non-passthrough模式：數據來自Cloud SQL，使用原始列名
-                    if 'Publisher Sub ID 1' in df.columns and not df['Publisher Sub ID 1'].isna().all():
-                        # Passthrough模式：從temp excel讀取
-                        df['Source'] = df['Publisher Sub ID 1'].fillna('')
-                        logger.info("📍 Source設置：使用 Publisher Sub ID 1 (Passthrough模式)")
-                    elif 'Aff Sub1' in df.columns and not df['Aff Sub1'].isna().all():
-                        # Non-passthrough模式：從Cloud SQL讀取  
-                        df['Source'] = df['Aff Sub1'].fillna('')
-                        logger.info("📍 Source設置：使用 Aff Sub1 (Cloud SQL模式)")
-                    elif 'Aff Sub' in df.columns:
-                        # 備用選項
-                        df['Source'] = df['Aff Sub'].fillna('')
-                        logger.info("📍 Source設置：使用 Aff Sub (備用)")
-                    else:
-                        df['Source'] = 'Unknown'
-                        logger.warning("⚠️ Source設置：無可用源欄位，設為 Unknown")
-                    
-                    # 步驟5: 添加Partner分組欄位
-                    def classify_partner(source_value):
-                        """根據PARTNER_SOURCES_MAPPING將source分類到對應的Partner"""
-                        if pd.isna(source_value) or str(source_value).strip() == '':
-                            return 'Unknown'
-                        
-                        source_str = str(source_value).strip()
-                        
-                        # 🔍 先檢查具體的Partner (排除ByteC的通配符匹配)
-                        for partner_name, partner_config in config.PARTNER_SOURCES_MAPPING.items():
-                            # 跳過ByteC，最後處理
-                            if partner_name == 'ByteC':
-                                continue
-                                
-                            pattern = partner_config.get('pattern', '')
-                            if pattern and re.match(pattern, source_str, re.IGNORECASE):
-                                return partner_name
-                                
-                            # 如果沒有pattern，檢查sources列表
-                            sources = partner_config.get('sources', [])
-                            for config_source in sources:
-                                if config_source == 'ALL':  # 跳過通配符
-                                    continue
-                                if source_str.upper().startswith(config_source.upper()):
-                                    return partner_name
-                        
-                        # 🔍 如果沒有匹配到具體Partner，默認歸類為ByteC
-                        return 'ByteC'
-                    
-                    df['Partner'] = df['Source'].apply(classify_partner)
-                    
-                    # 步驟6: 確保數值欄位類型正確
-                    numeric_columns = config.get_numeric_columns()
-                    for col in numeric_columns:
-                        if col in df.columns:
-                            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-                    
-                    # 步驟7: 重新排列欄位順序，只保留標準欄位
-                    final_columns = []
-                    for col in standard_columns:
-                        if col in df.columns:
-                            final_columns.append(col)
-                    
-                    df = df[final_columns]
-                    
-                    # 步驟8: 保存標準化的Excel文件，指定工作表名称避免长产品名称问题
                     with pd.ExcelWriter(output_file_path, engine='openpyxl') as writer:
                         df.to_excel(writer, sheet_name='Data', index=False)
                     
-                    # 記錄統計信息
-                    partner_stats = df['Partner'].value_counts().to_dict()
+                    # 🔧 Passthrough 模式：查找並更新對應的 Passthrough Excel 文件
+                    try:
+                        import glob
+                        import os
+                        
+                        # 從 CSV 文件名推導對應的 Passthrough Excel 文件
+                        if file_path and file_path.endswith('.csv'):
+                            # 提取文件名基礎部分
+                            csv_name = os.path.basename(file_path)
+                            base_name = csv_name.replace('.csv', '')
+                            
+                            # 查找對應的 Passthrough Excel 文件
+                            passthrough_pattern = f"output/Passthrough_{base_name}_*.xlsx"
+                            passthrough_files = glob.glob(passthrough_pattern)
+                            
+                            if passthrough_files:
+                                # 使用最新的文件
+                                passthrough_file = max(passthrough_files, key=os.path.getmtime)
+                                
+                                logger.info(f"🔄 找到對應的 Passthrough 文件: {passthrough_file}")
+                                logger.info(f"📊 準備用 mockup 調整後的數據覆蓋原始金額")
+                                
+                                # 備份原始文件
+                                backup_path = passthrough_file.replace('.xlsx', '_backup.xlsx')
+                                import shutil
+                                shutil.copy2(passthrough_file, backup_path)
+                                logger.info(f"💾 已備份原始文件到: {backup_path}")
+                                
+                                # 用 mockup 調整後的數據覆蓋原始 Passthrough 文件
+                                with pd.ExcelWriter(passthrough_file, engine='openpyxl') as writer:
+                                    df.to_excel(writer, sheet_name='Data', index=False)
+                                
+                                logger.info(f"✅ 成功更新 Passthrough 文件，現在包含 mockup 調整後的金額")
+                                logger.info(f"🎯 Reporter Agent 現在將讀取到正確的 mockup 後金額")
+                                
+                            else:
+                                logger.warning(f"⚠️ 未找到對應的 Passthrough 文件，模式: {passthrough_pattern}")
+                        
+                    except Exception as e:
+                        logger.error(f"❌ 更新 Passthrough 文件失敗: {e}")
+                        logger.warning(f"⚠️ 將繼續使用 DMP_temp 文件: {output_file_path}")
                     
-                    stored_ids = [f"passthrough_{i}" for i in range(len(processed_conversions))]  # 模擬stored_ids用於統計
+                    # 記錄統計信息
+                    if 'Partner' in df.columns:
+                        partner_stats = df['Partner'].value_counts().to_dict()
+                        logger.info(f"📊 Partner統計: {partner_stats}")
+                    elif 'partner' in df.columns:
+                        partner_stats = df['partner'].value_counts().to_dict()
+                        logger.info(f"📊 partner統計: {partner_stats}")
+                    else:
+                        logger.warning("⚠️ 無法找到Partner/partner字段進行統計")
+                    
+                    stored_ids = [f"passthrough_{i}" for i in range(len(processed_conversions))]
                     
                 except Exception as e:
                     logger.error(f"❌ 生成標準化temp excel文件失敗: {e}")
@@ -447,9 +1442,284 @@ class DMPAgent:
         
         return start_date, end_date, days_ago
     
+    async def _generate_final_mockup_summary(self, processed_data: List[Dict], platform: str):
+        """
+        生成最終的 Mockup 處理摘要和配置驗證報告
+        
+        Args:
+            processed_data: 處理後的數據
+            platform: 平台名稱
+        """
+        try:
+            from config import get_partner_mockup_multiplier
+            
+            logger.info("🎯 ================ 最終 Mockup 處理摘要 ================")
+            
+            # 統計處理結果
+            total_records = len(processed_data)
+            total_original = sum(float(record.get('original_usd_sale_amount', 0)) for record in processed_data)
+            total_adjusted = sum(float(record.get('USD Sale Amount', 0)) or float(record.get('usd_sale_amount', 0)) for record in processed_data)
+            
+            # 按 Partner 分組統計
+            partner_summary = {}
+            for record in processed_data:
+                partner = record.get('partner', record.get('Partner', 'Unknown'))
+                if partner not in partner_summary:
+                    partner_summary[partner] = {
+                        'count': 0,
+                        'original_total': 0,
+                        'adjusted_total': 0,
+                        'actual_multiplier': 0,
+                        'expected_multiplier': get_partner_mockup_multiplier(partner.upper() if partner else 'Unknown')
+                    }
+                
+                partner_summary[partner]['count'] += 1
+                partner_summary[partner]['original_total'] += float(record.get('original_usd_sale_amount', 0))
+                partner_summary[partner]['adjusted_total'] += float(record.get('USD Sale Amount', 0)) or float(record.get('usd_sale_amount', 0))
+                partner_summary[partner]['actual_multiplier'] = float(record.get('mockup_multiplier', 1.0))
+            
+            # 輸出最終摘要
+            logger.info(f"📊 處理總覽:")
+            logger.info(f"   💾 總記錄數: {total_records:,}")
+            logger.info(f"   💰 原始總金額: ${total_original:,.2f} USD")
+            logger.info(f"   💰 調整後總金額: ${total_adjusted:,.2f} USD")
+            logger.info(f"   📈 總金額變化: ${total_adjusted - total_original:+,.2f} USD")
+            if total_original > 0:
+                total_change_pct = ((total_adjusted - total_original) / total_original) * 100
+                logger.info(f"   📈 總變化百分比: {total_change_pct:+.2f}%")
+            
+            logger.info(f"📋 Partner 明細摘要:")
+            
+            # 配置不一致警告標記
+            has_config_mismatch = False
+            
+            for partner, summary in partner_summary.items():
+                if summary['count'] > 0:
+                    original = summary['original_total']
+                    adjusted = summary['adjusted_total']
+                    actual_mult = summary['actual_multiplier']
+                    expected_mult = summary['expected_multiplier']
+                    
+                    change = adjusted - original
+                    change_pct = ((adjusted - original) / original * 100) if original > 0 else 0
+                    
+                    # 檢查配置一致性
+                    is_consistent = abs(actual_mult - expected_mult) <= 0.001
+                    consistency_icon = "✅" if is_consistent else "⚠️"
+                    
+                    if not is_consistent:
+                        has_config_mismatch = True
+                    
+                    logger.info(f"   {consistency_icon} {partner}:")
+                    logger.info(f"      📊 記錄數: {summary['count']:,}")
+                    logger.info(f"      💰 原始金額: ${original:,.2f} USD")
+                    logger.info(f"      💰 調整後金額: ${adjusted:,.2f} USD")
+                    logger.info(f"      📈 金額變化: ${change:+,.2f} USD ({change_pct:+.2f}%)")
+                    logger.info(f"      ⚙️  實際倍數: {actual_mult:.3f}")
+                    logger.info(f"      ⚙️  配置倍數: {expected_mult:.3f}")
+                    
+                    if not is_consistent:
+                        logger.warning(f"         🔥 配置不一致! 實際 ({actual_mult:.3f}) ≠ 預期 ({expected_mult:.3f})")
+            
+            # 顯示當前所有 Partner 的配置
+            logger.info(f"🔧 當前配置驗證 (config.py):")
+            all_configured_partners = ['RAMPUP', 'DeepLeaper', 'FTK', 'MP', 'MKK', 'TestPartner', 'ByteC']
+            for partner in all_configured_partners:
+                configured_mult = get_partner_mockup_multiplier(partner)
+                logger.info(f"   📋 {partner}: {configured_mult:.1f} ({configured_mult*100:.0f}%)")
+            
+            # 最終警告和建議
+            if has_config_mismatch:
+                logger.error("🚨 !!!! 嚴重警告: Mockup 配置與實際處理不一致 !!!!")
+                logger.error("📋 請立即檢查以下問題:")
+                logger.error("   1. config.py 中的 PARTNER_SOURCES_MAPPING 配置")
+                logger.error("   2. Partner 名稱的大小寫匹配")
+                logger.error("   3. 數據中的 Partner 字段值是否正確")
+                logger.error("   4. DMP Agent 的 Partner 分類邏輯")
+                logger.error("💡 建議: 檢查上述標記為 ⚠️ 的 Partner 配置")
+            else:
+                logger.info("✅ 🎉 Mockup 配置驗證完全通過! 所有 Partner 處理正確!")
+            
+            logger.info("🎯 ============= Mockup 處理摘要結束 =============")
+            
+        except Exception as e:
+            logger.error(f"❌ 最終摘要生成失敗: {e}")
+    
+    async def _update_passthrough_file_with_mockup(self, processed_data: List[Dict], csv_file_path: str):
+        """
+        更新對應的 Passthrough Excel 文件，用 mockup 調整後的數據覆蓋原始金額
+        
+        Args:
+            processed_data: mockup 處理後的數據
+            csv_file_path: 原始 CSV 文件路徑
+        """
+        try:
+            import glob
+            import os
+            import pandas as pd
+            
+            if not csv_file_path or not csv_file_path.endswith('.csv'):
+                logger.warning(f"⚠️ 非 CSV 文件，跳過 Passthrough 更新: {csv_file_path}")
+                return
+            
+            # 從 CSV 文件名推導對應的 Passthrough Excel 文件
+            csv_name = os.path.basename(csv_file_path)
+            base_name = csv_name.replace('.csv', '')
+            
+            # 查找對應的 Passthrough Excel 文件
+            passthrough_pattern = f"output/Passthrough_{base_name}_*.xlsx"
+            passthrough_files = glob.glob(passthrough_pattern)
+            
+            if not passthrough_files:
+                logger.warning(f"⚠️ 未找到對應的 Passthrough 文件，模式: {passthrough_pattern}")
+                return
+            
+            # 使用最新的文件
+            passthrough_file = max(passthrough_files, key=os.path.getmtime)
+            
+            logger.info(f"🔄 找到對應的 Passthrough 文件: {passthrough_file}")
+            logger.info(f"📊 準備用 mockup 調整後的數據更新 Passthrough 文件")
+            
+            # 將 processed_data 轉換為 DataFrame
+            updated_df = pd.DataFrame(processed_data)
+            
+            # 🔧 處理非法字符以避免 Excel 寫入錯誤
+            def clean_excel_text(value):
+                """清理 Excel 不支持的字符"""
+                if pd.isna(value) or not isinstance(value, str):
+                    return value
+                # 移除 Excel 不支持的控制字符
+                import re
+                # 保留常見字符，移除控制字符
+                cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', str(value))
+                # 限制長度以避免 Excel 限制
+                return cleaned[:32000] if len(cleaned) > 32000 else cleaned
+            
+            # 清理所有文本字段
+            for column in updated_df.columns:
+                if updated_df[column].dtype == 'object':
+                    updated_df[column] = updated_df[column].apply(clean_excel_text)
+            
+            logger.info(f"🧹 已清理 Excel 非法字符")
+            
+            # 確保必要的欄位存在並調整欄位名稱以匹配 Passthrough 格式
+            column_mapping = {
+                'conversion_id': 'Conversion ID',
+                'datetime_conversion': 'Conversion Date', 
+                'usd_sale_amount': 'Sale Amount (USD)',
+                'USD Sale Amount': 'Sale Amount (USD)',  # 額外映射
+                'sale_amount': 'Sale Amount (USD)',      # 額外映射
+                'advertiser': 'Advertiser',
+                'order_id': 'Order ID',
+                'status': 'Status',
+                'publisher_sub_id_1': 'Publisher Sub ID 1',
+                'publisher_sub_id_2': 'Publisher Sub ID 2',
+                'publisher_sub_id_3': 'Publisher Sub ID 3',
+                'publisher_sub_id_4': 'Publisher Sub ID 4',
+                'publisher_sub_id_5': 'Publisher Sub ID 5',
+                'advertiser_sub_id_2': 'Advertiser Sub ID 2',
+                'advertiser_sub_id_3': 'Advertiser Sub ID 3',
+                'advertiser_sub_id_4': 'Advertiser Sub ID 4',
+                'advertiser_sub_id_5': 'Advertiser Sub ID 5',
+                'partner': 'Partner',
+                'platform': 'Platform'
+            }
+            
+            # 重命名欄位以匹配 Passthrough 格式
+            logger.info(f"🔍 處理前欄位: {list(updated_df.columns)}")
+            
+            mapped_columns = []
+            for old_col, new_col in column_mapping.items():
+                if old_col in updated_df.columns:
+                    if new_col not in updated_df.columns:
+                        updated_df[new_col] = updated_df[old_col]
+                        mapped_columns.append(f"{old_col} -> {new_col}")
+                    else:
+                        # 如果目標欄位已存在，確保使用正確的值
+                        if old_col == 'usd_sale_amount' and new_col == 'Sale Amount (USD)':
+                            updated_df[new_col] = updated_df[old_col]  # 強制使用 mockup 後的值
+                            mapped_columns.append(f"{old_col} -> {new_col} (強制覆蓋)")
+            
+            logger.info(f"🔄 欄位映射: {mapped_columns}")
+            logger.info(f"🔍 處理後欄位: {list(updated_df.columns)}")
+            
+            # 檢查關鍵金額欄位
+            if 'Sale Amount (USD)' in updated_df.columns:
+                sample_amounts = updated_df['Sale Amount (USD)'].head(3).tolist()
+                logger.info(f"💰 金額樣本 (前3筆): {sample_amounts}")
+            else:
+                logger.warning(f"⚠️ 未找到 Sale Amount (USD) 欄位！")
+            
+            # 確保 Source 欄位存在
+            if 'Source' not in updated_df.columns and 'Publisher Sub ID 1' in updated_df.columns:
+                updated_df['Source'] = updated_df['Publisher Sub ID 1']
+            
+            # 備份原始文件
+            backup_path = passthrough_file.replace('.xlsx', '_backup.xlsx')
+            import shutil
+            shutil.copy2(passthrough_file, backup_path)
+            logger.info(f"💾 已備份原始文件到: {backup_path}")
+            
+            # 選擇 Passthrough 格式需要的欄位
+            passthrough_columns = [
+                'Conversion ID', 'Conversion Date', 'Advertiser', 'Order ID', 
+                'Sale Amount (USD)', 'Publisher Sub ID 1', 'Status', 
+                'Publisher Sub ID 2', 'Publisher Sub ID 3', 'Publisher Sub ID 4', 
+                'Publisher Sub ID 5', 'Advertiser Sub ID 2', 'Advertiser Sub ID 3', 
+                'Advertiser Sub ID 4', 'Advertiser Sub ID 5', 'Partner', 'Source'
+            ]
+            
+            # 只保留存在的欄位
+            available_columns = [col for col in passthrough_columns if col in updated_df.columns]
+            final_df = updated_df[available_columns].copy()
+            
+            logger.info(f"📋 更新欄位: {available_columns}")
+            
+            # 用 mockup 調整後的數據覆蓋原始 Passthrough 文件
+            with pd.ExcelWriter(passthrough_file, engine='openpyxl') as writer:
+                final_df.to_excel(writer, sheet_name='Data', index=False)
+            
+            logger.info(f"✅ 成功更新 Passthrough 文件，現在包含 mockup 調整後的金額")
+            logger.info(f"🎯 Reporter Agent 現在將讀取到正確的 mockup 後金額")
+            
+            # 驗證更新
+            verify_df = pd.read_excel(passthrough_file, sheet_name='Data')
+            if 'Partner' in verify_df.columns and 'Sale Amount (USD)' in verify_df.columns:
+                rampup_data = verify_df[verify_df['Partner'] == 'RAMPUP']
+                if len(rampup_data) > 0:
+                    rampup_total = rampup_data['Sale Amount (USD)'].sum()
+                    logger.info(f"✅ 驗證：更新後 RAMPUP 總金額 = ${rampup_total:,.2f}")
+            
+        except Exception as e:
+            logger.error(f"❌ 更新 Passthrough 文件失敗: {e}")
+            import traceback
+            logger.error(f"錯誤詳情: {traceback.format_exc()}")
+
+    def _classify_partner_by_source(self, source: str) -> str:
+        """根據 source 值分類 Partner"""
+        if pd.isna(source) or str(source).strip() == '':
+            return 'Unknown'
+        
+        source_str = str(source).strip()
+        
+        # 使用 config.py 中的 PARTNER_SOURCES_MAPPING 進行分類
+        import re
+        import config
+        
+        for partner_name, partner_config in config.PARTNER_SOURCES_MAPPING.items():
+            pattern = partner_config.get('pattern', '')
+            if pattern:
+                try:
+                    if re.search(pattern, source_str):
+                        return partner_name
+                except re.error:
+                    continue
+        
+        return 'Unknown'
+    
     async def _apply_mockup_processing(self, conversions: List[Dict], platform: str) -> List[Dict]:
         """
-        應用Mockup數據處理
+        應用Mockup數據處理 - 根據Partner特定配置
         
         Args:
             conversions: 原始轉化數據列表
@@ -459,27 +1729,79 @@ class DMPAgent:
             List[Dict]: 處理後的轉化數據列表
         """
         try:
-            # 從config獲取mockup倍數
+            # 從config獲取Partner特定的mockup倍數
             import config
-            mockup_multiplier = getattr(config, 'MOCKUP_MULTIPLIER', 0.9)
+            from config import get_partner_mockup_multiplier
             
-            logger.info(f"🔄 正在應用Mockup處理 (倍數: {mockup_multiplier})")
+            logger.info(f"🔄 正在應用Mockup處理...")
             
             processed_conversions = []
             original_total = 0
             adjusted_total = 0
+            partner_multipliers = {}  # 記錄每個Partner使用的倍數
+            partner_stats = {}  # 記錄每個Partner的統計
             
             for conv in conversions:
                 # 創建處理後的轉化數據副本
                 processed_conv = conv.copy()
                 
-                # 處理usd_sale_amount
-                original_amount = conv.get('usd_sale_amount', 0)
+                # 獲取Partner信息 - 支持大小寫不敏感
+                partner = conv.get('Partner') or conv.get('partner', platform)
+                
+                # 根據Partner獲取特定的mockup倍數
+                if partner and partner.upper() in ['RAMPUP', 'DEEPLEAPER', 'TESTPARTNER', 'MKK', 'MP', 'FTK', 'BYTEC']:
+                    mockup_multiplier = get_partner_mockup_multiplier(partner.upper())
+                    partner_multipliers[partner] = mockup_multiplier
+                else:
+                    # 如果無法確定Partner，使用默認倍數
+                    mockup_multiplier = getattr(config, 'MOCKUP_MULTIPLIER', 0.9)
+                    partner_multipliers[partner] = mockup_multiplier
+                
+                # 初始化Partner統計
+                if partner not in partner_stats:
+                    partner_stats[partner] = {
+                        'original_amount': 0,
+                        'adjusted_amount': 0,
+                        'count': 0
+                    }
+                
+                # 處理金額欄位 - 支持多種欄位名稱（包括映射後的字段名）
+                amount_fields = [
+                    'usd_sale_amount', 'conversion_amount', 'sale_amount', 'Sale Amount (USD)',
+                    'USD Sale Amount',  # 字段映射後的名稱
+                    'Local Sale Amount', 'amount', 'Amount'  # 其他可能的名稱
+                ]
+                original_amount = 0
+                amount_field_used = None
+                
+                for field in amount_fields:
+                    if field in conv and conv[field] is not None:
+                        # 確保金額不為 None 且可以轉換為數字
+                        try:
+                            amount_value = float(conv[field])
+                            if amount_value >= 0:  # 允許 0 金額，只排除負數
+                                original_amount = amount_value
+                                amount_field_used = field
+                                break
+                        except (ValueError, TypeError):
+                            continue
+                
                 if original_amount:
                     adjusted_amount = round(original_amount * mockup_multiplier, 2)
-                    processed_conv['usd_sale_amount'] = adjusted_amount
+                    # 更新所有相關的欄位
+                    for field in amount_fields:
+                        if field in processed_conv:
+                            processed_conv[field] = adjusted_amount
+                    
                     original_total += original_amount
                     adjusted_total += adjusted_amount
+                    
+                    # 更新Partner統計
+                    partner_stats[partner]['original_amount'] += original_amount
+                    partner_stats[partner]['adjusted_amount'] += adjusted_amount
+                    partner_stats[partner]['count'] += 1
+                    
+                    logger.debug(f"Mockup處理: {partner} - {amount_field_used}: ${original_amount} -> ${adjusted_amount} (倍數: {mockup_multiplier})")
                 
                 # 處理usd_payout（如果存在）
                 original_payout = conv.get('usd_payout', 0)
@@ -494,13 +1816,65 @@ class DMPAgent:
                 
                 processed_conversions.append(processed_conv)
             
-            # 詳細日志
+            # 詳細日志 - 增強版本
             logger.info(f"📊 Mockup處理統計:")
             logger.info(f"   - 處理記錄數: {len(processed_conversions)}")
             logger.info(f"   - 原始總金額: ${original_total:,.2f} USD")
             logger.info(f"   - 調整後總金額: ${adjusted_total:,.2f} USD")
-            logger.info(f"   - 調整倍數: {mockup_multiplier}")
             logger.info(f"   - 金額變化: ${adjusted_total - original_total:+,.2f} USD")
+            if original_total > 0:
+                change_percentage = ((adjusted_total - original_total) / original_total) * 100
+                logger.info(f"   - 金額變化百分比: {change_percentage:+.2f}%")
+            logger.info(f"   - Partner倍數分布: {partner_multipliers}")
+            
+            # 打印每個Partner的詳細統計 - 增強版本
+            logger.info("📊 Partner詳細統計 (Mockup前後金額):")
+            for partner, stats in partner_stats.items():
+                if stats['count'] > 0:
+                    original = stats['original_amount']
+                    adjusted = stats['adjusted_amount']
+                    multiplier = partner_multipliers.get(partner, 1.0)
+                    change = adjusted - original
+                    change_pct = ((adjusted - original) / original * 100) if original > 0 else 0
+                    
+                    # 驗證配置一致性
+                    expected_multiplier = get_partner_mockup_multiplier(partner.upper() if partner else 'Unknown')
+                    
+                    logger.info(f"   💰 {partner}:")
+                    logger.info(f"      📈 原始金額: ${original:,.2f} USD")
+                    logger.info(f"      📈 調整後金額: ${adjusted:,.2f} USD")
+                    logger.info(f"      📊 金額變化: ${change:+,.2f} USD ({change_pct:+.2f}%)")
+                    logger.info(f"      ⚙️  實際倍數: {multiplier}")
+                    logger.info(f"      ⚙️  預期倍數: {expected_multiplier} (來自 config.py)")
+                    logger.info(f"      📋 記錄數: {stats['count']}")
+                    
+                    # ⚠️ 配置一致性警告
+                    if abs(multiplier - expected_multiplier) > 0.001:  # 允許微小的浮點誤差
+                        logger.warning(f"⚠️  警告: Partner '{partner}' 的實際 mockup 倍數 ({multiplier}) 與 config.py 配置 ({expected_multiplier}) 不一致！")
+                        logger.warning(f"      請檢查 config.py 中的 PARTNER_SOURCES_MAPPING['{partner}']['mockup_multiplier'] 配置")
+            
+            # 輸出 Mockup 配置總結
+            logger.info("🔧 當前 Mockup 配置 (來自 config.py):")
+            all_partners = ['RAMPUP', 'DeepLeaper', 'FTK', 'MP', 'MKK', 'TestPartner', 'ByteC']
+            for p in all_partners:
+                expected_mult = get_partner_mockup_multiplier(p)
+                logger.info(f"   📊 {p}: {expected_mult} ({expected_mult*100:.0f}%)")
+            
+            # 最終警告檢查
+            config_mismatch_detected = False
+            for partner, multiplier in partner_multipliers.items():
+                expected_multiplier = get_partner_mockup_multiplier(partner.upper() if partner else 'Unknown')
+                if abs(multiplier - expected_multiplier) > 0.001:
+                    config_mismatch_detected = True
+                    break
+            
+            if config_mismatch_detected:
+                logger.error("🚨 嚴重警告: 檢測到 Mockup 配置不一致!")
+                logger.error("    - 實際使用的倍數與 config.py 配置不符")
+                logger.error("    - 請檢查上述詳細統計中標記為 ⚠️ 警告 的 Partner")
+                logger.error("    - 確保所有 Partner 的 mockup_multiplier 配置正確")
+            else:
+                logger.info("✅ Mockup 配置一致性檢查通過")
             
             return processed_conversions
             
@@ -520,6 +1894,7 @@ class DMPAgent:
             import os
             import glob
             from datetime import datetime
+            import re
             
             logger.info("📁 開始從Data Input Agent輸出文件加載數據...")
             
@@ -544,9 +1919,84 @@ class DMPAgent:
             df = pd.read_excel(latest_file)
             logger.info(f"📊 成功讀取數據: {len(df):,} 行, {len(df.columns)} 列")
             
+            # 檢測平台並應用字段映射
+            platform = self.detect_platform_from_filename(latest_file)
+            if platform == 'UNKNOWN':
+                platform = self.detect_platform_from_content(df)
+            
+            logger.info(f"🔍 檢測到平台: {platform}")
+            
+            # 使用字段映射管理器進行數據轉換
+            try:
+                # 將内部平台标识符映射回字段映射管理器使用的标识符
+                platform_mapping = {
+                    'AT_BM': 'access_trade',
+                    'IA_BM': 'involve_asia',
+                    'IA_MB': 'involve_asia',
+                    'IA_OT': 'involve_asia',
+                    'SHOPEE': 'shopee',
+                    'TIKTOK_SHOP': 'tiktok_shop',
+                    'LS_MB': 'linkshare'
+                }
+                
+                mapping_platform = platform_mapping.get(platform, platform.lower())
+                
+                # 使用字段映射管理器進行映射
+                mapped_df, mapping_info = self.field_mapping_manager.map_dataframe_columns(df, mapping_platform)
+                
+                if not mapped_df.empty:
+                    logger.info(f"✅ 使用字段映射管理器成功映射 {len(mapping_info['mapped_columns'])} 個欄位")
+                    logger.info(f"📋 映射欄位: {[m['source'] + ' -> ' + m['target'] for m in mapping_info['mapped_columns']]}")
+                    if mapping_info['unmapped_columns']:
+                        logger.warning(f"⚠️ 未映射欄位: {mapping_info['unmapped_columns']}")
+                    
+                    # 使用映射後的DataFrame
+                    df = mapped_df
+                else:
+                    logger.warning(f"⚠️ 字段映射失敗，使用原始數據")
+                    
+            except Exception as e:
+                logger.error(f"❌ 字段映射失敗: {e}")
+                logger.info("📋 使用原始數據格式")
+            
             # 轉換為DMP Agent所需的格式
             conversions = []
             for _, row in df.iterrows():
+                # 獲取Source信息
+                source = row.get('Publisher Sub ID 1', '')
+                
+                # 根據Source分類Partner
+                def classify_partner(source_value):
+                    """根據PARTNER_SOURCES_MAPPING將source分類到對應的Partner"""
+                    if pd.isna(source_value) or str(source_value).strip() == '':
+                        return 'Unknown'
+                    
+                    source_str = str(source_value).strip()
+                    
+                    # 🔍 先檢查具體的Partner (排除ByteC的通配符匹配)
+                    for partner_name, partner_config in config.PARTNER_SOURCES_MAPPING.items():
+                        # 跳過ByteC，最後處理
+                        if partner_name == 'ByteC':
+                            continue
+                            
+                        pattern = partner_config.get('pattern', '')
+                        if pattern and re.match(pattern, source_str, re.IGNORECASE):
+                            return partner_name
+                            
+                        # 如果沒有pattern，檢查sources列表
+                        sources = partner_config.get('sources', [])
+                        for config_source in sources:
+                            if config_source == 'ALL':  # 跳過通配符
+                                continue
+                            if source_str.upper().startswith(config_source.upper()):
+                                return partner_name
+                    
+                    # 🔍 如果沒有匹配到具體Partner，默認歸類為ByteC
+                    return 'ByteC'
+                
+                # 優先使用文件中已有的 Partner 欄位，如果不存在則重新計算
+                partner = row.get('Partner', classify_partner(source))
+                
                 conversion = {
                     'conversion_id': row.get('Conversion ID'),
                     'order_id': row.get('Order ID'),
@@ -566,17 +2016,25 @@ class DMPAgent:
                     'adv_sub3': row.get('Advertiser Sub ID 3', ''),
                     'adv_sub4': row.get('Advertiser Sub ID 4', ''),
                     'adv_sub5': row.get('Advertiser Sub ID 5', ''),
-                    'advertiser': row.get('Advertiser', ''),  # 修復：從Data Input Agent的Advertiser欄位讀取
+                    'advertiser': row.get('Advertiser', ''),
                     'advertiser_name': row.get('Advertiser Name', ''),
                     'campaign_name': row.get('Campaign Name', ''),
                     'tracking_id': row.get('Tracking ID', ''),
                     'platform': 'FileImport',  # 標記為文件導入
-                    'data_source': 'file'
+                    'data_source': 'file',
+                    'partner': partner  # 添加Partner信息
                 }
                 conversions.append(conversion)
             
+            # 統計Partner分布
+            partner_stats = {}
+            for conv in conversions:
+                partner = conv.get('partner', 'Unknown')
+                partner_stats[partner] = partner_stats.get(partner, 0) + 1
+            
             logger.info(f"✅ 數據轉換完成: {len(conversions):,} 條轉化記錄")
             logger.info(f"📊 數據總金額: ${sum(c.get('usd_sale_amount', 0) for c in conversions):,.2f} USD")
+            logger.info(f"📊 Partner分布: {partner_stats}")
             
             return conversions
             
@@ -1056,6 +2514,11 @@ async def main():
   
   # Passthrough模式和文件數據源
   python agents/data_dmp_agent/main.py --days-ago 2 --passthrough --data-source file --self-email
+  
+  # 🔄 Phase 2: 檔案處理模式
+  python agents/data_dmp_agent/main.py --import file1.csv,file2.xlsx --passthrough
+  python agents/data_dmp_agent/main.py --import-folder input --passthrough
+  python agents/data_dmp_agent/main.py --import-folder input --force-platform IA_OT --passthrough
         """
     )
     
@@ -1094,6 +2557,14 @@ async def main():
                        help='数据来源: api=从API获取数据, file=处理现有数据文件 (默认: api)')
     parser.add_argument('--self-email', action='store_true',
                        help='发送邮件给自己（从Data Input Agent传递的参数）')
+    
+    # 🔄 Phase 2: 多檔案處理參數
+    parser.add_argument('--import', dest='import_files', type=str,
+                       help='要處理的檔案列表（逗號分隔）')
+    parser.add_argument('--import-folder', dest='import_folder', type=str,
+                       help='處理指定資料夾下的所有檔案')
+    parser.add_argument('--force-platform', dest='force_platform', type=str,
+                       help='強制指定平台類型 (AT_BM, IA_BM, IA_OT, IA_MB)')
     
     args = parser.parse_args()
     
@@ -1161,7 +2632,52 @@ async def main():
             await agent.run_delete_mode(args)
             return
         
-        # 主要處理流程
+        # 🔄 Phase 2: 檔案處理模式
+        if args.import_files or args.import_folder:
+            logger.info("=" * 60)
+            logger.info("🚀 DMP-Agent 檔案處理流程")
+            logger.info("=" * 60)
+            
+            file_paths = []
+            
+            if args.import_files:
+                # 處理多檔案參數
+                file_paths = [f.strip() for f in args.import_files.split(',')]
+                logger.info(f"📁 處理檔案列表: {len(file_paths)} 個檔案")
+                for file_path in file_paths:
+                    logger.info(f"   - {file_path}")
+            
+            elif args.import_folder:
+                # 處理資料夾參數
+                logger.info(f"📁 處理資料夾: {args.import_folder}")
+                file_paths = agent.get_files_from_folder(args.import_folder)
+                
+                if not file_paths:
+                    logger.error(f"❌ 資料夾 {args.import_folder} 中沒有找到可處理的檔案")
+                    return
+            
+            # 設置強制平台（如果指定）
+            if args.force_platform:
+                agent.force_platform = args.force_platform
+                logger.info(f"🔧 強制指定平台: {args.force_platform}")
+            
+            # 處理檔案
+            result = await agent.process_multiple_files(file_paths, args.passthrough)
+            
+            # 打印結果
+            success_count = sum(1 for r in result['individual_results'] if r['success'])
+            logger.info(f"✅ 檔案處理完成: {success_count}/{len(file_paths)} 成功")
+            logger.info(f"📊 合併後總記錄數: {result['total_records']} 條")
+            
+            if result['merged_filename']:
+                logger.info(f"📁 合併檔案: {result['merged_filename']}")
+            
+            if args.passthrough:
+                logger.info("🔄 Passthrough模式: 數據不會插入Cloud SQL")
+            
+            return
+        
+        # 主要處理流程 (API 模式)
         logger.info("=" * 60)
         logger.info("🚀 DMP-Agent 數據處理流程")
         logger.info("=" * 60)
@@ -1190,9 +2706,6 @@ async def main():
             logger.info(f"   - 結束日期: {args.end_date}")
         
         logger.info(f"   - 数据源: {args.data_source}")
-        
-        if hasattr(args, 'partner') and args.partner:
-            logger.info(f"   - Partner: {args.partner}")
         
         # 🔄 Phase 2: 顯示新功能參數狀態
         if args.passthrough:

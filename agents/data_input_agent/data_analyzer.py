@@ -22,6 +22,9 @@ class DataAnalyzer:
         """对DataFrame进行全面分析"""
         # Removed analysis logging to reduce output noise
         
+        # 🚨 重要修復：使用DataFrame副本避免修改原始數據
+        df = df.copy()
+        
         # 基础统计
         basic_stats = self._basic_statistics(df)
         
@@ -191,10 +194,36 @@ class DataAnalyzer:
             
             for col in date_columns:
                 if df[col].dtype == 'object':
-                    # 尝试转换为日期
+                    # 尝试转换为日期，指定常见格式避免警告
                     try:
-                        df[col] = pd.to_datetime(df[col], errors='coerce')
-                    except:
+                        # 首先尝试常见的日期格式
+                        common_formats = [
+                            '%Y-%m-%d',      # 2025-08-05
+                            '%Y/%m/%d',      # 2025/08/05
+                            '%d/%m/%Y',      # 05/08/2025
+                            '%m/%d/%Y',      # 08/05/2025
+                            '%Y-%m-%d %H:%M:%S',  # 2025-08-05 14:30:25
+                            '%Y/%m/%d %H:%M:%S',  # 2025/08/05 14:30:25
+                            '%d/%m/%Y %H:%M:%S',  # 05/08/2025 14:30:25
+                            '%m/%d/%Y %H:%M:%S',  # 08/05/2025 14:30:25
+                        ]
+                        
+                        # 尝试使用指定格式解析
+                        parsed = False
+                        for fmt in common_formats:
+                            try:
+                                df[col] = pd.to_datetime(df[col], format=fmt, errors='coerce')
+                                parsed = True
+                                break
+                            except:
+                                continue
+                        
+                        # 如果指定格式都失败，使用infer_datetime_format=True来减少警告
+                        if not parsed:
+                            df[col] = pd.to_datetime(df[col], errors='coerce', infer_datetime_format=True)
+                            
+                    except Exception as e:
+                        # 如果所有方法都失败，跳过这个列
                         continue
                 
                 if 'datetime' in str(df[col].dtype):

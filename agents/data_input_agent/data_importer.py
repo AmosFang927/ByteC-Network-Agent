@@ -114,24 +114,209 @@ class DataImporter:
             df = df.drop(columns=columns_to_remove)
             logger_info(f"已移除列: {columns_to_remove}")
         
-        # 2. 应用mockup处理（如果需要）
+        # 2. 添加Partner分类（如果需要）
+        if 'Partner' not in df.columns:
+            df = self._add_partner_classification(df)
+        
+        # 3. 添加Platform字段
+        if 'Platform' not in df.columns:
+            df['Platform'] = 'access_trade'  # AccessTrade数据默认平台
+            logger_info("已添加Platform字段: access_trade")
+        
+        # 4. 添加Source字段
+        if 'Source' not in df.columns:
+            # 优先级：Publisher Sub ID 1 > aff_sub > CLICK_URL > 默认值
+            source_candidates = ['Publisher Sub ID 1', 'aff_sub', 'CLICK_URL']
+            source_found = False
+            
+            for candidate_col in source_candidates:
+                if candidate_col in df.columns and not source_found:
+                    if candidate_col == 'Publisher Sub ID 1':
+                        # 使用 Publisher Sub ID 1 作为 Source（过滤占位符）
+                        def clean_source_value(value):
+                            if pd.isna(value) or str(value).strip() == '':
+                                return 'Unknown'
+                            
+                            value_str = str(value).strip()
+                            placeholder_values = ['{media_id}', '{click_id}', '--', 'unknown', 'NaN']
+                            if value_str in placeholder_values:
+                                return 'Unknown'
+                            
+                            return value_str
+                        
+                        df['Source'] = df['Publisher Sub ID 1'].apply(clean_source_value)
+                        logger_info("已添加Source字段，基于Publisher Sub ID 1字段（过滤占位符）")
+                        source_found = True
+                        
+                    elif candidate_col == 'aff_sub':
+                        # 过滤掉占位符值
+                        def clean_source_value(value):
+                            if pd.isna(value) or str(value).strip() == '':
+                                return 'Unknown'
+                            
+                            value_str = str(value).strip()
+                            placeholder_values = ['{media_id}', '{click_id}', '--', 'unknown', 'NaN']
+                            if value_str in placeholder_values:
+                                return 'Unknown'
+                            
+                            return value_str
+                        
+                        df['Source'] = df['aff_sub'].apply(clean_source_value)
+                        logger_info("已添加Source字段，基于aff_sub字段（过滤占位符）")
+                        source_found = True
+                        
+                    elif candidate_col == 'CLICK_URL':
+                        # 尝试从CLICK_URL中提取实际的source信息
+                        def extract_source_from_click_url(click_url):
+                            """从CLICK_URL中提取source信息"""
+                            if pd.isna(click_url) or str(click_url).strip() == '':
+                                return 'Unknown'
+                            
+                            click_url_str = str(click_url).strip()
+                            
+                            # 如果CLICK_URL看起来像URL，尝试提取sub_id参数
+                            if click_url_str.startswith('http'):
+                                import re
+                                sub_id_match = re.search(r'sub_id=([^&]+)', click_url_str)
+                                if sub_id_match:
+                                    sub_id = sub_id_match.group(1)
+                                    # 解码URL编码的参数
+                                    import urllib.parse
+                                    try:
+                                        decoded_sub_id = urllib.parse.unquote(sub_id)
+                                        return decoded_sub_id
+                                    except:
+                                        return sub_id
+                            else:
+                                # 如果CLICK_URL不是URL，直接使用其值作为source
+                                placeholder_values = ['{media_id}', '{click_id}', '--', 'unknown', 'NaN']
+                                if click_url_str not in placeholder_values:
+                                    return click_url_str
+                            
+                            return 'Unknown'
+                        
+                        df['Source'] = df['CLICK_URL'].apply(extract_source_from_click_url)
+                        logger_info("已添加Source字段，从CLICK_URL中提取")
+                        source_found = True
+            
+            # 如果没有找到任何可用的source列，使用默认值
+            if not source_found:
+                df['Source'] = 'AT_BM'  # 默认source
+                logger_info("已添加Source字段，使用默认值: AT_BM")
+        
+        # 5. 应用mockup处理（如果需要）
         if INPUT_DATA_ENABLE_MOCKUP:
             df = self._apply_mockup_processing(df)
         
-        # 3. 数据清洗和标准化
+        # 6. 数据清洗和标准化
         df = self._clean_and_standardize_data(df)
         
         return df
     
+    def _add_partner_classification(self, df):
+        """添加Partner分类"""
+        import config
+        import re
+        
+        def classify_partner(source_value):
+            """根据PARTNER_SOURCES_MAPPING将source分类到对应的Partner"""
+            if pd.isna(source_value) or str(source_value).strip() == '':
+                return 'Unknown'
+            
+            source_str = str(source_value).strip()
+            
+            # 跳过占位符值
+            placeholder_values = ['{media_id}', '{click_id}', '--', 'unknown', 'NaN']
+            if source_str in placeholder_values:
+                return 'Unknown'
+            
+            # 先检查具体的Partner (排除ByteC的通配符匹配)
+            for partner_name, partner_config in config.PARTNER_SOURCES_MAPPING.items():
+                # 跳过ByteC，最后处理
+                if partner_name == 'ByteC':
+                    continue
+                    
+                pattern = partner_config.get('pattern', '')
+                if pattern and re.match(pattern, source_str, re.IGNORECASE):
+                    return partner_name
+                    
+                # 如果没有pattern，检查sources列表
+                sources = partner_config.get('sources', [])
+                for config_source in sources:
+                    if config_source == 'ALL':  # 跳过通配符
+                        continue
+                    if source_str.upper().startswith(config_source.upper()):
+                        return partner_name
+            
+            # 如果没有匹配到具体Partner，默认归类为ByteC
+            return 'ByteC'
+        
+        # 尝试多个可能的source字段
+        source_columns = ['Publisher Sub ID 1', 'aff_sub', 'sub1', 'aff_sub1']
+        source_column = None
+        
+        for col in source_columns:
+            if col in df.columns:
+                # 检查是否有非占位符值
+                non_placeholder_values = df[col].dropna()
+                non_placeholder_values = non_placeholder_values[~non_placeholder_values.isin(['{media_id}', '{click_id}', '--', 'unknown', 'NaN'])]
+                
+                if len(non_placeholder_values) > 0:
+                    source_column = col
+                    break
+        
+        if source_column:
+            df['Partner'] = df[source_column].apply(classify_partner)
+            logger_info(f"使用 {source_column} 字段添加Partner分类，分布: {df['Partner'].value_counts().to_dict()}")
+        else:
+            # 如果没有找到有效的source字段，使用默认值
+            df['Partner'] = 'AT_BM'  # AccessTrade默认Partner
+            logger_info("未找到有效的source字段，使用默认Partner: AT_BM")
+        
+        return df
+    
     def _apply_mockup_processing(self, df):
-        """应用mockup处理"""
+        """应用mockup处理 - 根据Partner特定配置"""
+        import config
+        
         # 查找金额相关列
         amount_columns = [col for col in df.columns if 'amount' in col.lower() or 'payout' in col.lower()]
         
-        for col in amount_columns:
-            if col in df.columns and df[col].dtype in ['float64', 'int64']:
-                df[col] = df[col] * INPUT_DATA_MOCKUP_MULTIPLIER
-                logger_info(f"已对列 '{col}' 应用mockup处理 (倍数: {INPUT_DATA_MOCKUP_MULTIPLIER})")
+        # 检查是否有Partner列
+        if 'Partner' in df.columns:
+            # 按Partner分组处理
+            for partner in df['Partner'].unique():
+                if pd.isna(partner) or partner == '':
+                    continue
+                    
+                # 获取Partner特定的mockup倍数
+                mockup_multiplier = config.get_partner_mockup_multiplier(partner.upper())
+                
+                # 获取该Partner的数据
+                partner_mask = df['Partner'] == partner
+                partner_data = df[partner_mask]
+                
+                if len(partner_data) > 0:
+                    logger_info(f"Partner '{partner}' 使用mockup倍数: {mockup_multiplier}")
+                    
+                    # 对金额列应用mockup处理
+                    for col in amount_columns:
+                        if col in df.columns and df[col].dtype in ['float64', 'int64']:
+                            original_total = partner_data[col].sum()
+                            df.loc[partner_mask, col] = partner_data[col] * mockup_multiplier
+                            adjusted_total = df.loc[partner_mask, col].sum()
+                            logger_info(f"Partner '{partner}' 列 '{col}': ${original_total:,.2f} → ${adjusted_total:,.2f} (倍数: {mockup_multiplier})")
+        else:
+            # 如果没有Partner列，使用默认倍数
+            default_multiplier = getattr(config, 'MOCKUP_MULTIPLIER', 0.9)
+            logger_info(f"未找到Partner列，使用默认mockup倍数: {default_multiplier}")
+            
+            for col in amount_columns:
+                if col in df.columns and df[col].dtype in ['float64', 'int64']:
+                    original_total = df[col].sum()
+                    df[col] = df[col] * default_multiplier
+                    adjusted_total = df[col].sum()
+                    logger_info(f"列 '{col}': ${original_total:,.2f} → ${adjusted_total:,.2f} (倍数: {default_multiplier})")
         
         return df
     
@@ -206,7 +391,12 @@ class DataImporter:
         """导入数据的主函数"""
         try:
             # 1. 读取文件（支持Excel和CSV）
-            input_path = self.input_dir / filename
+            # 检查是否是完整路径
+            if Path(filename).is_absolute() or '/' in filename or '\\' in filename:
+                input_path = Path(filename)
+            else:
+                input_path = self.input_dir / filename
+            
             if not input_path.exists():
                 raise FileNotFoundError(f"文件不存在: {input_path}")
             

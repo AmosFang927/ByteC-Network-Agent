@@ -145,7 +145,17 @@ class FileReportGenerator:
             
             # 檢查數據是否包含必要的標準欄位
             missing_columns = []
-            for col in ['Partner', 'Source', 'USD Sale Amount', 'Status']:
+            # 檢查多種可能的欄位名稱格式
+            amount_column = None
+            possible_amount_columns = ['USD Sale Amount', 'Sale Amount (USD)', 'Sale Amount', 'usd_sale_amount']
+            for col in possible_amount_columns:
+                if col in df.columns:
+                    amount_column = col
+                    break
+            
+            for col in ['Partner', 'Source', amount_column, 'Status']:
+                if col is None:
+                    continue
                 if col not in df.columns:
                     missing_columns.append(col)
             
@@ -158,13 +168,66 @@ class FileReportGenerator:
                     df['Partner'] = 'Unknown'
                 if 'Source' not in df.columns:
                     df['Source'] = df.get('Aff Sub1', df.get('Aff Sub', 'Unknown'))
-                if 'USD Sale Amount' not in df.columns:
+                # 確保有金額欄位
+                if amount_column is None:
                     df['USD Sale Amount'] = 0.0
+                    amount_column = 'USD Sale Amount'
                 if 'Status' not in df.columns:
                     df['Status'] = 'Pending'
             
+            # 添加欄位名稱標準化映射
+            column_mapping = {
+                'Conversion Date': 'Datetime Conversion',
+                'Sale Amount (USD)': 'USD Sale Amount',
+                'Publisher Sub ID 1': 'Aff Sub1',
+                'Publisher Sub ID 2': 'Aff Sub2', 
+                'Publisher Sub ID 3': 'Aff Sub3',
+                'Publisher Sub ID 4': 'Aff Sub4',
+                'Publisher Sub ID 5': 'Aff Sub5',
+                'Advertiser Sub ID 2': 'Adv Pub2',
+                'Advertiser Sub ID 3': 'Adv Pub3',
+                'Advertiser Sub ID 4': 'Adv Pub4', 
+                'Advertiser Sub ID 5': 'Adv Pub5'
+            }
+            
+            # 執行欄位重新命名
+            df = df.rename(columns=column_mapping)
+            logger.info(f"✅ 欄位標準化完成，更新後欄位: {list(df.columns)}")
+            
+            # 更新 amount_column 的引用
+            if amount_column == 'Sale Amount (USD)':
+                amount_column = 'USD Sale Amount'
+            
+            # 🚨 重要：應用 DMP_PASSTHROUGH_REMOVE_COLUMNS 移除不需要的欄位
+            try:
+                columns_to_remove = config.DMP_PASSTHROUGH_REMOVE_COLUMNS
+                existing_columns_to_remove = [col for col in columns_to_remove if col in df.columns]
+                
+                if existing_columns_to_remove:
+                    df = df.drop(columns=existing_columns_to_remove)
+                    logger.info(f"✅ 已移除 DMP Passthrough 欄位: {existing_columns_to_remove}")
+                else:
+                    logger.info("📋 無需移除的 DMP Passthrough 欄位")
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ 應用 DMP_PASSTHROUGH_REMOVE_COLUMNS 時出錯: {e}")
+            
+            # 修復 Datetime Conversion 欄位（如果為空）
+            if 'Datetime Conversion' in df.columns:
+                missing_dates = df['Datetime Conversion'].isna().sum()
+                if missing_dates > 0:
+                    logger.warning(f"⚠️ 發現 {missing_dates} 個空的 Datetime Conversion，使用默認日期修復")
+                    # 嘗試從文件名提取日期，或使用昨天日期
+                    default_date_str = self._extract_date_from_filename(import_file_path)
+                    if default_date_str:
+                        default_date = datetime.strptime(default_date_str, '%Y-%m-%d')
+                    else:
+                        default_date = datetime.now() - timedelta(days=1)
+                    df['Datetime Conversion'] = df['Datetime Conversion'].fillna(default_date)
+                    logger.info(f"✅ 已使用 {default_date.strftime('%Y-%m-%d')} 填充 {missing_dates} 個空的日期欄位")
+            
             # 確保數值類型正確
-            numeric_columns = ['USD Sale Amount', 'USD Payout', 'Conversion ID', 'Offer ID']
+            numeric_columns = [amount_column, 'USD Payout', 'Conversion ID', 'Offer ID']
             for col in numeric_columns:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
@@ -368,7 +431,13 @@ class FileReportGenerator:
                 if 'Status' not in partner_df.columns:
                     logger.info(f"📊 {partner_name} 無Status列，假設所有記錄為有效轉化")
                     total_records = len(partner_df)
-                    total_amount = Decimal(str(partner_df['USD Sale Amount'].sum())) if 'USD Sale Amount' in partner_df.columns else Decimal('0')
+                    # 自動檢測金額欄位
+                    amount_col = None
+                    for col in ['USD Sale Amount', 'Sale Amount (USD)', 'Sale Amount', 'usd_sale_amount']:
+                        if col in partner_df.columns:
+                            amount_col = col
+                            break
+                    total_amount = Decimal(str(partner_df[amount_col].sum())) if amount_col else Decimal('0')
                     sources = partner_df['Source'].unique().tolist() if 'Source' in partner_df.columns else []
                     sources = [s for s in sources if pd.notna(s) and s != '']
                     
@@ -400,7 +469,19 @@ class FileReportGenerator:
             valid_df = partner_df[valid_mask]
             
             total_records = len(valid_df)
-            total_amount = Decimal(str(valid_df['USD Sale Amount'].sum()))
+            # 支持多種金額欄位名稱格式
+            amount_column = None
+            possible_amount_columns = ['USD Sale Amount', 'Sale Amount (USD)', 'Sale Amount', 'usd_sale_amount']
+            for col in possible_amount_columns:
+                if col in partner_df.columns:
+                    amount_column = col
+                    break
+            
+            if amount_column:
+                total_amount = Decimal(str(valid_df[amount_column].sum()))
+            else:
+                logger.warning(f"⚠️ 未找到金額欄位，可用欄位: {list(partner_df.columns)}")
+                total_amount = Decimal('0')
             
             # 獲取該Partner的所有Sources
             sources = partner_df['Source'].unique().tolist()

@@ -45,6 +45,29 @@ logger = logging.getLogger(__name__)
 # 强制刷新stdout
 sys.stdout.flush()
 
+def find_latest_dmp_output():
+    """自動查找最新的 DMP Agent 輸出文件"""
+    import glob
+    import os
+    
+    # 🎯 優先查找 DMP_temp_*.xlsx 文件（包含 mockup 調整後的數據）
+    dmp_temp_files = glob.glob('output/DMP_temp_*.xlsx')
+    if dmp_temp_files:
+        latest_file = max(dmp_temp_files, key=os.path.getmtime)
+        logger.info(f"🔍 自動找到最新的 DMP 輸出文件 (含 mockup): {latest_file}")
+        return latest_file
+    
+    # 備用：查找 Passthrough_*.xlsx 文件（原始數據，無 mockup）
+    passthrough_files = glob.glob('output/Passthrough_*.xlsx')
+    if passthrough_files:
+        # 按修改時間排序，返回最新的文件
+        latest_file = max(passthrough_files, key=os.path.getmtime)
+        logger.warning(f"⚠️ 使用 Passthrough 文件（可能無 mockup 調整）: {latest_file}")
+        return latest_file
+    
+    logger.warning("⚠️ 未找到任何 DMP Agent 輸出文件")
+    return None
+
 # 导入模块 - 使用絕對導入避免相對導入錯誤
 try:
     from agents.reporter_agent.core.report_generator import ReportGenerator
@@ -111,6 +134,16 @@ async def generate_report_cli(partner_name: str = "ALL",
         # 🔍 檢查是否使用文件導入模式
         if import_file:
             logger.info(f"📁 檔案導入模式: {import_file}")
+        else:
+            # 自動查找最新的 DMP 輸出文件
+            auto_import_file = find_latest_dmp_output()
+            if auto_import_file:
+                import_file = auto_import_file
+                logger.info(f"📁 自動檔案導入模式: {import_file}")
+            else:
+                logger.info("📁 使用數據庫查詢模式")
+        
+        if import_file:
             
             # 實現從DMP文件讀取數據並生成報告
             try:
@@ -122,9 +155,71 @@ async def generate_report_cli(partner_name: str = "ALL",
                 
                 logger.info(f"📊 正在讀取DMP輸出文件...")
                 
-                # 讀取DMP Agent輸出的Excel文件
-                df = pd.read_excel(import_file)
-                # logger.info(f"✅ 成功讀取文件: {len(df):,} 行數據, {len(df.columns)} 列")
+                # 讀取DMP Agent輸出的Excel文件 - 智能檢測正確的sheet和標題行
+                try:
+                    # 首先檢查所有的sheets
+                    excel_file = pd.ExcelFile(import_file)
+                    logger.info(f"🔍 檢測到的sheets: {excel_file.sheet_names}")
+                    
+                    # 嘗試讀取第一個sheet（通常是數據sheet）
+                    df = pd.read_excel(import_file, sheet_name=0)
+                    
+                    # 檢查是否欄位名稱都是 "Unnamed" 開頭，如果是則需要找正確的標題行
+                    if df.columns[0].startswith('Unnamed'):
+                        logger.warning("⚠️ 檢測到無效的欄位名稱，嘗試尋找正確的標題行...")
+                        
+                        # 嘗試不同的 skiprows 參數來找到正確的標題行
+                        for skip_rows in range(0, 10):
+                            try:
+                                test_df = pd.read_excel(import_file, sheet_name=0, skiprows=skip_rows)
+                                # 檢查是否有合理的欄位名稱（包含常見字段）
+                                expected_cols = ['Conversion ID', 'Datetime Conversion', 'USD Sale Amount', 'Sale Amount (USD)', 'Partner']
+                                if any(col in test_df.columns for col in expected_cols):
+                                    df = test_df
+                                    logger.info(f"✅ 找到正確的標題行，跳過前 {skip_rows} 行")
+                                    break
+                            except:
+                                continue
+                    
+                    logger.info(f"✅ 成功讀取文件: {len(df):,} 行數據, {len(df.columns)} 列")
+                    logger.info(f"📋 檔案欄位: {list(df.columns)}")
+                    
+                    # 處理重複欄位問題 - 如果有多個Partner欄位，優先使用有數據的那個
+                    if 'Partner' in df.columns:
+                        partner_cols = [col for col in df.columns if col == 'Partner']
+                        if len(partner_cols) > 1:
+                            logger.warning(f"⚠️ 發現重複的Partner欄位: {len(partner_cols)} 個")
+                            # 使用第一個有效的Partner欄位
+                            for i, col_name in enumerate(df.columns):
+                                if col_name == 'Partner':
+                                    if i > 0:  # 不是第一個Partner欄位
+                                        # 檢查哪個Partner欄位有更多有效數據
+                                        first_partner_valid = df['Partner'].notna().sum()
+                                        current_partner_valid = df.iloc[:, i].notna().sum()
+                                        if current_partner_valid > first_partner_valid:
+                                            logger.info(f"🔄 使用第 {i+1} 個Partner欄位（有效數據更多）")
+                                            df['Partner'] = df.iloc[:, i]
+                                        # 刪除重複的欄位
+                                        df = df.drop(df.columns[i], axis=1)
+                                        break
+                    
+                except Exception as read_error:
+                    logger.error(f"❌ 讀取Excel文件失敗: {read_error}")
+                    # 嘗試備用方案：逐個sheet讀取
+                    excel_file = pd.ExcelFile(import_file)
+                    df = None
+                    for sheet_name in excel_file.sheet_names:
+                        try:
+                            test_df = pd.read_excel(import_file, sheet_name=sheet_name)
+                            if not test_df.empty and 'Conversion ID' in test_df.columns:
+                                df = test_df
+                                logger.info(f"✅ 成功從 sheet '{sheet_name}' 讀取數據")
+                                break
+                        except:
+                            continue
+                    
+                    if df is None:
+                        raise Exception("無法從任何sheet讀取有效數據")
                 
                 # 🔍 打印數據結構以便調試
                 # logger.info(f"📋 文件列名: {list(df.columns)}")
@@ -411,7 +506,7 @@ def main():
     generate_parser.add_argument('--start-date', help='开始日期 (YYYY-MM-DD)')
     generate_parser.add_argument('--end-date', help='结束日期 (YYYY-MM-DD)')
     generate_parser.add_argument('--days-ago', type=int, help='过去N天的数据')
-    generate_parser.add_argument('--import', dest='import_file', help='从DMP Agent输出的文件导入数据 (ex: output/DMP_temp_xxx.xlsx)')
+    generate_parser.add_argument('--import', dest='import_file', help='从DMP Agent输出的文件导入数据 (ex: output/Passthrough_xxx.xlsx 或 output/DMP_temp_xxx.xlsx)')
     generate_parser.add_argument('--no-email', action='store_true', help='不发送邮件')
     generate_parser.add_argument('--no-feishu', action='store_true', help='不上传到飞书')
     generate_parser.add_argument('--self-email', action='store_true', help='发送邮件到自己（测试用）')

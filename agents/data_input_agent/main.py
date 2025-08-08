@@ -48,6 +48,10 @@ class DataInputAgent:
         console_formatter = logging.Formatter('📊 %(asctime)s | %(levelname)s | %(message)s')
         console_handler.setFormatter(console_formatter)
         
+        # 强制刷新输出
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+        
         # 创建文件处理器
         file_handler = logging.FileHandler('data_input_agent.log')
         file_handler.setLevel(logging.INFO)
@@ -64,6 +68,23 @@ class DataInputAgent:
         logger.setLevel(logging.INFO)
         logger.propagate = True
         
+        # 添加自定义处理器来强制刷新
+        class FlushHandler(logging.StreamHandler):
+            def emit(self, record):
+                super().emit(record)
+                sys.stdout.flush()
+                sys.stderr.flush()
+        
+        # 替换控制台处理器
+        for handler in logger.handlers[:]:
+            if isinstance(handler, logging.StreamHandler):
+                logger.removeHandler(handler)
+        
+        flush_handler = FlushHandler(sys.stdout)
+        flush_handler.setLevel(logging.INFO)
+        flush_handler.setFormatter(console_formatter)
+        logger.addHandler(flush_handler)
+        
         return logger
     
     def list_available_files(self) -> List[str]:
@@ -78,6 +99,31 @@ class DataInputAgent:
             excel_files.extend(input_dir.glob(ext))
         
         return [f.name for f in excel_files]
+    
+    def get_files_from_folder(self, folder_path: str) -> List[str]:
+        """从指定文件夹获取所有Excel/CSV文件"""
+        folder = Path(folder_path)
+        if not folder.exists():
+            self.logger.error(f"文件夹不存在: {folder_path}")
+            return []
+        
+        if not folder.is_dir():
+            self.logger.error(f"路径不是文件夹: {folder_path}")
+            return []
+        
+        excel_files = []
+        for ext in ['*.xlsx', '*.xls', '*.csv']:
+            excel_files.extend(folder.glob(ext))
+        
+        # 按文件名排序
+        excel_files.sort(key=lambda x: x.name)
+        
+        file_list = [str(f) for f in excel_files]
+        self.logger.info(f"📁 从文件夹 {folder_path} 找到 {len(file_list)} 个文件")
+        for file in file_list:
+            self.logger.info(f"   - {Path(file).name}")
+        
+        return file_list
     
     async def process_file(self, filename: str, passthrough: bool = False, 
                           analyze_only: bool = False, enable_dmp_forward: bool = False,
@@ -149,7 +195,11 @@ class DataInputAgent:
         try:
             import pandas as pd
             
-            input_path = Path(config.INPUT_DATA_DIR) / filename
+            # 检查是否是完整路径
+            if Path(filename).is_absolute() or '/' in filename or '\\' in filename:
+                input_path = Path(filename)
+            else:
+                input_path = Path(config.INPUT_DATA_DIR) / filename
             
             # 读取文件
             if filename.endswith('.csv'):
@@ -191,27 +241,26 @@ class DataInputAgent:
                 return {
                     'success': True,
                     'message': 'Agent间调用功能已禁用',
-                    'output_path': output_path
+                    'dmp_forward': None
                 }
             
             from shared.utils.agent_caller import call_dmp_agent
             
-            # 計算日期範圍 - 優先使用傳入的 start_date 和 end_date
-            if start_date is None or end_date is None:
-                target_date = datetime.now() - timedelta(days=days_ago)
-                start_date = target_date.strftime("%Y-%m-%d")
-                end_date = target_date.strftime("%Y-%m-%d")
+            # 🔍 检测数据中的Partner信息
+            detected_platform = self._detect_platform_from_data(output_path)
+            if detected_platform:
+                self.logger.info(f"🎯 检测到数据中的Partner: {detected_platform}")
+                platform_to_use = detected_platform
             else:
-                # 確保使用傳入的日期，不重新計算
-                start_date = start_date
-                end_date = end_date
+                self.logger.info("⚠️ 无法检测到Partner，使用默认平台")
+                platform_to_use = "IAByteC"  # 默认平台
             
             # 🔍 打印DMP Agent调用信息
             self.logger.info("=" * 60)
             self.logger.info("🔗 准备调用DMP Agent")
             self.logger.info("=" * 60)
             self.logger.info(f"📊 数据源: Data Input Agent")
-            self.logger.info(f"📄 原始输入文件: input/{filename}")
+            self.logger.info(f"📄 原始输入文件: {filename}")
             self.logger.info(f"📁 处理后输出文件: {output_path}")
             self.logger.info(f"📅 日期範圍: {start_date} to {end_date} (days_ago: {days_ago})")
             self.logger.info(f"⚙️ 调用参数:")
@@ -219,37 +268,42 @@ class DataInputAgent:
             self.logger.info(f"   - days_ago: {days_ago}")
             self.logger.info(f"   - start_date: {start_date}")
             self.logger.info(f"   - end_date: {end_date}")
-            self.logger.info(f"   - partner: {partner}")
-            self.logger.info(f"   - passthrough: {passthrough}")
-            self.logger.info(f"   - self_email: {self_email}")
             self.logger.info(f"   - data_source: file (由Data Input Agent调用)")
             
             if passthrough:
                 self.logger.info("🔄 DMP Agent模式: Passthrough (不插入Cloud SQL，产生temp excel)")
             else:
                 self.logger.info("💾 DMP Agent模式: 标准模式 (插入Cloud SQL)")
+            
             self.logger.info("=" * 60)
+            self.logger.info(f"🔗 调用DMP Agent: platform={platform_to_use}, days_ago={days_ago}, passthrough={passthrough}")
             
             # 构建额外参数
             additional_args = []
+            
+            # 🎯 優先添加原始輸入文件路徑，讓agent_caller能檢測到並使用--import模式
+            additional_args.append(filename)
+            
+            if start_date and end_date:
+                additional_args.extend(['--start-date', start_date, '--end-date', end_date])
             if partner:
                 additional_args.extend(['--partner', partner])
             if self_email:
                 additional_args.append('--self-email')
-            # 添加日期參數
-            additional_args.extend(['--start-date', start_date, '--end-date', end_date])
             
-            # 调用DMP Agent处理数据（Data Input Agent调用时不需要platform参数）
-            # DMP Agent应该处理已存在的数据，而不是从API重新获取
+            # 🔧 修复: 显式指定使用file数据源（从Data Input Agent调用）
+            additional_args.extend(['--data-source', 'file'])
+            
+            # 调用DMP Agent处理数据（传递检测到的platform）
             result = await call_dmp_agent(
-                platform=None,  # Data Input Agent调用时不需要platform
+                platform=platform_to_use,  # 使用检测到的platform而不是None
                 days_ago=days_ago,
                 passthrough=passthrough,  # 传递passthrough参数给DMP Agent
                 additional_args=additional_args if additional_args else None
             )
             
             if result.get('success'):
-                self.logger.info("✅ DMP Agent调用成功")
+                self.logger.info("✅ DMP Agent执行成功")
                 
                 # 🔍 顯示DMP Agent輸出文件信息
                 if result.get('output_file_path'):
@@ -274,6 +328,49 @@ class DataInputAgent:
             self.logger.error(f"❌ {error_msg}")
             return {'success': False, 'error': error_msg}
     
+    def _detect_platform_from_data(self, file_path: str) -> str:
+        """从数据文件中检测Partner/Platform信息"""
+        try:
+            import pandas as pd
+            
+            # 读取Excel文件
+            df = pd.read_excel(file_path)
+            
+            # 检查是否有Publisher Sub ID 1列
+            if 'Publisher Sub ID 1' in df.columns:
+                # 获取所有非空的Source值
+                sources = df['Publisher Sub ID 1'].dropna().unique()
+                
+                # 检测Partner
+                for source in sources:
+                    source_str = str(source).strip()
+                    
+                    # 检查是否匹配FTK
+                    if source_str.upper().startswith('FTK'):
+                        return 'FTK'
+                    # 检查是否匹配RAMPUP
+                    elif source_str.upper().startswith('RAMPUP'):
+                        return 'RAMPUP'
+                    # 检查是否匹配DeepLeaper相关
+                    elif any(source_str.upper().startswith(prefix) for prefix in ['OPPO', 'VIVO', 'OEM1', 'OEM2', 'OEM3', 'XIAOMI']):
+                        return 'DeepLeaper'
+                    # 检查是否匹配MKK
+                    elif source_str.upper().startswith('MKK'):
+                        return 'MKK'
+                    # 检查是否匹配MP
+                    elif source_str.upper() == 'MP':
+                        return 'MP'
+                    # 检查是否匹配TestPartner
+                    elif source_str.upper().startswith('TESTPARTNER'):
+                        return 'TestPartner'
+            
+            # 如果没有检测到特定Partner，返回默认值
+            return 'IAByteC'
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 检测Partner失败: {e}")
+            return 'IAByteC'  # 默认返回IAByteC
+    
     async def _forward_to_reporter_agent(self, process_result: Dict[str, Any], days_ago: int = 1, partner: str = None, self_email: bool = False, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
         """转发数据到Reporter Agent"""
         try:
@@ -290,7 +387,7 @@ class DataInputAgent:
             # 優先使用傳入的 start_date 和 end_date 參數
             if start_date is None or end_date is None:
                 # 從 DMP Agent 結果中獲取日期範圍
-                start_result_start_date = process_result.get('start_date')
+                process_result_start_date = process_result.get('start_date')
                 process_result_end_date = process_result.get('end_date')
                 
                 # 如果沒有從 DMP Agent 獲取到日期，則重新計算
@@ -509,6 +606,9 @@ async def main():
   # 批量处理多个文件
   python agents/data_input_agent/main.py --batch-import data1.xlsx,data2.xlsx --passthrough
   
+  # 处理文件夹中的所有文件
+  python agents/data_input_agent/main.py --import-folder input --dmp-forward --passthrough
+  
   # 列出可用文件
   python agents/data_input_agent/main.py --list-files
         """
@@ -519,6 +619,8 @@ async def main():
                        help='要导入的Excel/CSV文件名')
     parser.add_argument('--batch-import', dest='batch_files', type=str,
                        help='批量导入文件（逗号分隔）')
+    parser.add_argument('--import-folder', dest='import_folder', type=str,
+                       help='导入指定文件夹下的所有Excel/CSV文件')
     
     # 模式控制参数 (Phase 2: Additive Only)
     parser.add_argument('--passthrough', action='store_true',
@@ -559,8 +661,8 @@ async def main():
     args = parser.parse_args()
     
     # 参数验证
-    if not any([args.import_file, args.batch_files, args.list_files, args.stats_only]):
-        parser.error("必须指定一个操作: --import, --batch-import, --list-files, 或 --stats-only")
+    if not any([args.import_file, args.batch_files, args.import_folder, args.list_files, args.stats_only]):
+        parser.error("必须指定一个操作: --import, --batch-import, --import-folder, --list-files, 或 --stats-only")
     
     # 创建Data Input Agent实例
     agent = DataInputAgent()
@@ -623,6 +725,28 @@ async def main():
             # 统计结果
             success_count = sum(1 for r in results if r['success'])
             agent.logger.info(f"✅ 批量处理完成: {success_count}/{len(filenames)} 成功")
+        
+        elif args.import_folder:
+            # 文件夹处理
+            agent.logger.info(f"📁 开始处理文件夹: {args.import_folder}")
+            
+            # 获取文件夹中的所有文件
+            file_list = agent.get_files_from_folder(args.import_folder)
+            
+            if not file_list:
+                agent.logger.error(f"❌ 文件夹 {args.import_folder} 中没有找到可处理的文件")
+                return
+            
+            # 将文件列表转换为 --import 参数格式
+            import_files = ','.join([Path(f).name for f in file_list])
+            agent.logger.info(f"🔄 转换为批量导入参数: --import {import_files}")
+            
+            # 使用批量处理逻辑 - 注意：file_list 已经是完整路径，不需要再加 input/ 前缀
+            results = await agent.batch_process(file_list, **process_kwargs)
+            
+            # 统计结果
+            success_count = sum(1 for r in results if r['success'])
+            agent.logger.info(f"✅ 文件夹处理完成: {success_count}/{len(file_list)} 成功")
         
         # 显示最终统计
         agent.print_statistics()

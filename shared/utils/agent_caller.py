@@ -53,21 +53,38 @@ class AgentCaller:
             if not os.path.exists(output_dir):
                 return None
             
+            # 處理platform映射 - IAByteC映射到ByteC
+            mapped_platform = platform
+            if platform == "IAByteC":
+                mapped_platform = "ByteC"
+                logger.info(f"🔄 Platform映射: {platform} -> {mapped_platform}")
+            
             # 構建搜索模式
-            if platform:
-                pattern = f"{output_dir}/DMP_temp_{platform}_*.xlsx"
+            patterns_to_try = []
+            if mapped_platform:
+                # 首先嘗試映射後的platform名稱
+                patterns_to_try.append(f"{output_dir}/DMP_temp_{mapped_platform}_*.xlsx")
+                # 如果原platform不同，也嘗試原名稱作為fallback
+                if platform and platform != mapped_platform:
+                    patterns_to_try.append(f"{output_dir}/DMP_temp_{platform}_*.xlsx")
             else:
-                pattern = f"{output_dir}/DMP_temp_*.xlsx"
+                patterns_to_try.append(f"{output_dir}/DMP_temp_*.xlsx")
             
             # 查找匹配的文件
-            matching_files = glob.glob(pattern)
+            all_matching_files = []
+            for pattern in patterns_to_try:
+                matching_files = glob.glob(pattern)
+                if matching_files:
+                    all_matching_files.extend(matching_files)
+                    logger.info(f"🔍 使用模式 {pattern} 找到 {len(matching_files)} 個文件")
             
-            if not matching_files:
-                logger.warning(f"⚠️ 沒有找到匹配的DMP輸出文件: {pattern}")
+            if not all_matching_files:
+                for pattern in patterns_to_try:
+                    logger.warning(f"⚠️ 沒有找到匹配的DMP輸出文件: {pattern}")
                 return None
             
             # 按修改時間排序，取最新的
-            latest_file = max(matching_files, key=os.path.getmtime)
+            latest_file = max(all_matching_files, key=os.path.getmtime)
             
             logger.info(f"🔍 找到最新DMP輸出文件: {latest_file}")
             return latest_file
@@ -103,25 +120,51 @@ class AgentCaller:
             'python', 'agents/data_dmp_agent/main.py'
         ]
         
-        # 检查additional_args中是否包含日期参数
+        # 检查additional_args中是否包含日期参数和文件路径
         has_date_params = additional_args and any('--start-date' in arg or '--end-date' in arg for arg in additional_args)
+        has_import_file = additional_args and any(arg.endswith('.csv') or arg.endswith('.xlsx') for arg in additional_args)
         
-        # 只有在没有日期参数时才添加days-ago参数
-        if not has_date_params:
-            cmd.extend(['--days-ago', str(days_ago)])
-        
-        # 只在platform不为None时添加platform参数
-        if platform:
-            cmd.extend(['--platform', platform])
+        # 🔧 如果是passthrough模式且有文件，優先使用--import模式而不是--data-source file
+        if passthrough and has_import_file:
+            # 查找文件路徑
+            import_file = None
+            for arg in additional_args:
+                if arg.endswith('.csv') or arg.endswith('.xlsx'):
+                    import_file = arg
+                    break
+            
+            if import_file:
+                logger.info(f"🎯 Passthrough模式使用--import: {import_file}")
+                cmd.extend(['--import', import_file])
+                
+                # 只有在没有日期参数时才添加days-ago参数
+                if not has_date_params:
+                    cmd.extend(['--days-ago', str(days_ago)])
+                
+                if passthrough:
+                    cmd.append('--passthrough')
+                
+                # 添加其他參數，但排除文件路徑和data-source
+                if additional_args:
+                    filtered_args = []
+                    skip_next = False
+                    for i, arg in enumerate(additional_args):
+                        if skip_next:
+                            skip_next = False
+                            continue
+                        if arg == '--data-source':
+                            skip_next = True  # 跳過下一個參數（file）
+                            continue
+                        if not (arg.endswith('.csv') or arg.endswith('.xlsx')):
+                            filtered_args.append(arg)
+                    cmd.extend(filtered_args)
+            else:
+                # 回退到原始邏輯
+                logger.warning("⚠️ Passthrough模式但未找到文件，使用原始邏輯")
+                self._add_standard_dmp_args(cmd, platform, days_ago, has_date_params, passthrough, additional_args)
         else:
-            # 如果没有platform参数，说明是Data Input Agent调用，使用file数据源
-            cmd.extend(['--data-source', 'file'])
-        
-        if passthrough:
-            cmd.append('--passthrough')
-        
-        if additional_args:
-            cmd.extend(additional_args)
+            # 原始邏輯
+            self._add_standard_dmp_args(cmd, platform, days_ago, has_date_params, passthrough, additional_args)
         
         # 執行DMP Agent
         result = await self._execute_agent_command('DMP', cmd)
@@ -136,6 +179,22 @@ class AgentCaller:
                 logger.warning("⚠️ 未找到DMP輸出文件")
         
         return result
+    
+    def _add_standard_dmp_args(self, cmd, platform, days_ago, has_date_params, passthrough, additional_args):
+        """添加標準DMP Agent參數的輔助方法"""
+        # 只有在没有日期参数时才添加days-ago参数
+        if not has_date_params:
+            cmd.extend(['--days-ago', str(days_ago)])
+        
+        # 添加platform参数
+        if platform:
+            cmd.extend(['--platform', platform])
+        
+        if passthrough:
+            cmd.append('--passthrough')
+        
+        if additional_args:
+            cmd.extend(additional_args)
     
     async def call_reporter_agent(self,
                                 platform: str,
@@ -331,19 +390,29 @@ class AgentCaller:
         try:
             logger.info(f"🔄 执行{agent_name} Agent命令: {' '.join(cmd)}")
             
-            # 执行命令
+            # 🔧 修改: 强制输出子进程日志到前台
+            # 设置环境变量强制无缓冲输出
+            env = os.environ.copy()
+            env['PYTHONUNBUFFERED'] = '1'
+            env['PYTHONIOENCODING'] = 'utf-8'
+            
+            # 执行命令，将输出直接重定向到当前进程的stdout/stderr
             process = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=os.getcwd()
+                stdout=None,  # 直接输出到当前终端
+                stderr=None,  # 直接输出到当前终端
+                cwd=os.getcwd(),
+                env=env
             )
             
             # 等待执行完成
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
+            await asyncio.wait_for(
+                process.wait(),
                 timeout=self.timeout
             )
+            
+            # 由于输出已经直接显示，设置空的stdout/stderr
+            stdout, stderr = b'', b''
             
             call_record['end_time'] = datetime.now().isoformat()
             call_record['return_code'] = process.returncode

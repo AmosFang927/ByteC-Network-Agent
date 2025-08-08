@@ -2256,15 +2256,42 @@ class EmailSender:
         }
 
     def _is_partner_email_enabled(self, partner_name: str) -> bool:
-        """檢查Partner郵件是否啟用"""
-        return self.partner_email_enabled.get(partner_name, False)
+        """檢查Partner郵件是否啟用（大小寫不敏感）"""
+        # 先嘗試直接匹配
+        if partner_name in self.partner_email_enabled:
+            return self.partner_email_enabled[partner_name]
+        
+        # 如果直接匹配失敗，嘗試大小寫不敏感匹配
+        partner_name_lower = partner_name.lower()
+        for config_key, enabled in self.partner_email_enabled.items():
+            if config_key.lower() == partner_name_lower:
+                return enabled
+        
+        # 如果都沒有匹配，返回 False
+        return False
     
     def _get_partner_recipients(self, partner_name: str, self_email: bool = False) -> List[str]:
-        """獲取Partner的收件人列表"""
+        """獲取Partner的收件人列表（大小寫不敏感）"""
         if self_email:
             return [self.sender]
-        else:
-            return self.partner_email_mapping.get(partner_name, self.default_receivers)
+        
+        # 使用 config.get_partner_email_config 獲取最新配置
+        try:
+            email_config = config.get_partner_email_config(partner_name)
+            recipients = email_config.get('recipients', [])
+            if recipients:
+                return recipients
+        except Exception:
+            pass
+        
+        # 備用方案：嘗試大小寫不敏感匹配
+        partner_name_lower = partner_name.lower()
+        for config_key, recipients in self.partner_email_mapping.items():
+            if config_key.lower() == partner_name_lower:
+                return recipients
+        
+        # 最後備用方案
+        return self.default_receivers
     
     def _generate_email_subject(self, partner_name: str, report_date: str, file_path: str = None) -> str:
         """生成郵件主題"""

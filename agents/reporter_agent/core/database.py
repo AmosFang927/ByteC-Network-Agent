@@ -200,6 +200,7 @@ class PostbackDatabase:
             'MP': "c.aff_sub1 = 'MP'",
             'MKK': "c.aff_sub1 LIKE 'MKK%'",
             'TESTPARTNER': "c.aff_sub1 LIKE 'TestPartner%'",
+            'FTK': "c.aff_sub1 LIKE 'FTK%'",
             'BYTEC': "c.aff_sub1 IS NOT NULL"
         }
         

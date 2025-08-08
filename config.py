@@ -89,35 +89,48 @@ PARTNER_SOURCES_MAPPING = {
         "email_enabled": True,  # 邮件发送开关
         #"email_recipients": ["amosfang927@gmail.com"]  # 收件人列表
         "email_recipients": ["max@rampupads.com", "offer@rampupads.com", "bill.zhang@rampupads.com"],
-        "show_invalid_warning": False  # RAMPUP所有轉化status應該沒有invalid，所以summary不用呈現⚠️ Invalid Conversion
+        "show_invalid_warning": False,  # RAMPUP所有轉化status應該沒有invalid，所以summary不用呈現⚠️ Invalid Conversion
+        "mockup_multiplier": 0.7  # RAMPUP Partner 使用 70% 的 mockup 倍數
+    },
+    "FTK": {
+        "sources": ["FTK"],  # FTK source
+        "pattern": r"^FTK.*",  # 匹配以FTK开头的所有Sources - 必須在DeepLeaper之前檢查！
+        "email_enabled": True,  # 邮件发送开关
+        "email_recipients": ["AmosFang927@gmail.com"],  # 收件人列表（请修改为实际的FTK邮箱）
+        "show_invalid_warning": True,  # FTK partner保持原有的invalid warning顯示邏輯
+        "mockup_multiplier": 0.9  # FTK Partner 使用 90% 的 mockup 倍數
     },
     "DeepLeaper": {
         "sources": ["OPPO", "VIVO", "OEM1", "OEM2", "OEM3", "XIAOMI"],  # 包含OPPO、VIVO、OEM1、OEM2、OEM3、XIAOMI
-        "pattern": r"^(OPPO|VIVO|OEM1|OEM2|OEM3|XIAOMI).*",  # 匹配以OPPO、VIVO、OEM1、OEM2、OEM3、XIAOMI开头的所有Sources
+        "pattern": r".*(OPPO|VIVO|OEM1|OEM2|OEM3|XIAOMI).*",  # 匹配包含OPPO、VIVO、OEM1、OEM2、OEM3、XIAOMI的所有Sources
         "email_enabled": True,  # 邮件发送开关
         "email_recipients": ["sunjiakuo@deepleaper.com", "deepleaper@gmail.com"],  # 收件人列表
-        "show_invalid_warning": True  # 其他partner保持原有的invalid warning顯示邏輯
+        "show_invalid_warning": True,  # 其他partner保持原有的invalid warning顯示邏輯
+        "mockup_multiplier": 0.7  # DeepLeaper Partner 使用 70% 的 mockup 倍數
     },
     "TestPartner": {
         "sources": ["TestPartner"],
         "pattern": r"^TestPartner.*",
         "email_enabled": False,  # 邮件发送开关
         "email_recipients": ["AmosFang927+TestPub@gmail.com"],  # 收件人列表
-        "show_invalid_warning": True  # 測試partner保持原有的invalid warning顯示邏輯
+        "show_invalid_warning": True,  # 測試partner保持原有的invalid warning顯示邏輯
+        "mockup_multiplier": 1.0  # TestPartner 使用 100% 的 mockup 倍數（不調整）
     },
     "MKK": {
         "sources": ["MKK"],  # MKK source
         "pattern": r"^MKK.*",  # 匹配以MKK开头的所有Sources
         "email_enabled": True,  # 邮件发送开关
         "email_recipients": ["AmosFang927@gmail.com"],  # 收件人列表（请修改为实际的MKK邮箱）
-        "show_invalid_warning": True  # MKK partner保持原有的invalid warning顯示邏輯
+        "show_invalid_warning": True,  # MKK partner保持原有的invalid warning顯示邏輯
+        "mockup_multiplier": 1.0  # MKK Partner 使用 100% 的 mockup 倍數（不調整）
     },
     "MP": {
         "sources": ["MP"],  # MP source
         "pattern": r"^MP$",  # 只匹配確切的MP，不匹配其他變體
         "email_enabled": True,  # 邮件发送开关
         "email_recipients": ["AmosFang927@gmail.com"],  # 收件人列表（请修改为实际的MP邮箱）
-        "show_invalid_warning": True  # MP partner保持原有的invalid warning顯示邏輯
+        "show_invalid_warning": True,  # MP partner保持原有的invalid warning顯示邏輯
+        "mockup_multiplier": 0.9  # MP Partner 使用 90% 的 mockup 倍數
     },
     "ByteC": {
         "sources": ["ALL"],  # ByteC 处理所有数据，不限制 Sources
@@ -126,7 +139,8 @@ PARTNER_SOURCES_MAPPING = {
         "email_recipients": ["AmosFang927@gmail.com"],  # ByteC Loop邮箱（请修改为实际的 ByteC Loop 邮箱）
         "special_report": True,  # 标记为特殊报表格式
         "report_type": "bytec_summary",  # 特殊报表类型
-        "show_invalid_warning": True  # ByteC partner保持原有的invalid warning顯示邏輯
+        "show_invalid_warning": True,  # ByteC partner保持原有的invalid warning顯示邏輯
+        "mockup_multiplier": 1.0  # ByteC Partner 使用 100% 的 mockup 倍數（不調整）
     }
 }
 
@@ -159,6 +173,18 @@ REMOVE_COLUMNS = [
     "Created At",
     "Source ID"
 ]  # 要移除的栏位
+
+# DMP Agent passthrough模式下需要移除的字段（用於Reporter Agent）
+DMP_PASSTHROUGH_REMOVE_COLUMNS = [
+    "Platform",  # Reporter Agent 報表中不需要呈現 Platform 欄位
+    "mockup_multiplier", 
+    "mockup_applied",
+    "USD Payout",
+    "USD Reward", 
+    "original_usd_sale_amount",
+    "Local Reward",
+    "Local Sale Amount"
+]  # DMP Agent passthrough模式下要移除的栏位
 
 # =============================================================================
 # ByteC 报表配置
@@ -519,6 +545,25 @@ def get_partner_invalid_warning_config(partner_name):
     """获取 Partner 的 Invalid Conversion 警告配置"""
     partner_config = PARTNER_SOURCES_MAPPING.get(partner_name, {})
     return partner_config.get('show_invalid_warning', True)  # 默認顯示警告
+
+def get_partner_mockup_multiplier(partner_name):
+    """获取 Partner 的 mockup 倍数配置（大小寫不敏感）"""
+    if not partner_name:
+        return 1.0
+    
+    # 先嘗試直接匹配
+    partner_config = PARTNER_SOURCES_MAPPING.get(partner_name, {})
+    if 'mockup_multiplier' in partner_config:
+        return partner_config.get('mockup_multiplier', 1.0)
+    
+    # 如果直接匹配失敗，嘗試大小寫不敏感匹配
+    partner_name_lower = partner_name.lower()
+    for config_key, config_data in PARTNER_SOURCES_MAPPING.items():
+        if config_key.lower() == partner_name_lower:
+            return config_data.get('mockup_multiplier', 1.0)
+    
+    # 如果都沒有匹配，返回默認值
+    return 1.0  # 默認使用 100%（新加入的 partner 不調整）
 
 def get_platform_from_api_secret(api_secret):
     """根据 API Secret 获取平台名称"""
@@ -981,6 +1026,19 @@ INPUT_DATA_ENABLE_PANDASAI_ANALYSIS = True  # 是否启用pandasai分析
 INPUT_DATA_ENABLE_MOCKUP = False  # 是否启用mockup处理（禁用以避免與DMP Agent重複處理）
 INPUT_DATA_MOCKUP_MULTIPLIER = 0.9  # mockup倍数
 
+# Input Data Agent 默认参数配置
+INPUT_DATA_AGENT_DEFAULT_PASSTHROUGH = True      # 默认启用passthrough模式
+INPUT_DATA_AGENT_DEFAULT_DMP_FORWARD = True      # 默认启用dmp-forward
+INPUT_DATA_AGENT_DEFAULT_REPORTER_AGENT = True   # 默认启用reporter-agent
+INPUT_DATA_AGENT_DEFAULT_PARTNER = "ALL"         # 默认处理所有partner
+INPUT_DATA_AGENT_DEFAULT_SELF_EMAIL = True       # 默认启用self-email
+INPUT_DATA_AGENT_DEFAULT_DAYS_AGO = 2           # 默认days-ago参数
+
+# Input Data Agent 可选参数配置
+INPUT_DATA_AGENT_ENABLE_ANALYSIS_ONLY = False    # 是否启用仅分析模式
+INPUT_DATA_AGENT_ENABLE_BATCH_PROCESSING = True  # 是否启用批量处理
+INPUT_DATA_AGENT_MAX_BATCH_SIZE = 10             # 批量处理最大文件数
+
 # 输入数据输出模板
 INPUT_DATA_OUTPUT_TEMPLATE = "Processed_{original_filename}_{timestamp}.xlsx"
 
@@ -1007,7 +1065,7 @@ STANDARD_REPORT_COLUMNS = [
     'Advertiser Sub ID 5',
     'Status',
     'Partner',  # DMP Agent添加的分組欄位
-    'Source'    # DMP Agent添加的Source欄位
+    'Source'    # DMP Agent添加的Source欄位（使用Publisher Sub ID 1的值）
 ]
 
 # DMP Agent 輸出標準化列名映射
@@ -1079,5 +1137,95 @@ def is_sub_field(column_name):
     return ('Sub' in column_name and 
             column_name != 'Aff Sub' and 
             any(column_name.startswith(prefix) for prefix in ['Aff Sub', 'Adv Sub']))
+
+# =============================================================================
+# Input Data Agent 默认配置辅助函数
+# =============================================================================
+
+def get_input_data_agent_default_args():
+    """获取Input Data Agent的默认参数配置"""
+    return {
+        'passthrough': INPUT_DATA_AGENT_DEFAULT_PASSTHROUGH,
+        'dmp_forward': INPUT_DATA_AGENT_DEFAULT_DMP_FORWARD,
+        'reporter_agent': INPUT_DATA_AGENT_DEFAULT_REPORTER_AGENT,
+        'partner': INPUT_DATA_AGENT_DEFAULT_PARTNER,
+        'self_email': INPUT_DATA_AGENT_DEFAULT_SELF_EMAIL,
+        'days_ago': INPUT_DATA_AGENT_DEFAULT_DAYS_AGO
+    }
+
+def get_input_data_agent_optional_args():
+    """获取Input Data Agent的可选参数配置"""
+    return {
+        'analysis_only': INPUT_DATA_AGENT_ENABLE_ANALYSIS_ONLY,
+        'batch_processing': INPUT_DATA_AGENT_ENABLE_BATCH_PROCESSING,
+        'max_batch_size': INPUT_DATA_AGENT_MAX_BATCH_SIZE
+    }
+
+def should_enable_passthrough():
+    """是否启用passthrough模式"""
+    return INPUT_DATA_AGENT_DEFAULT_PASSTHROUGH
+
+def should_enable_dmp_forward():
+    """是否启用dmp-forward"""
+    return INPUT_DATA_AGENT_DEFAULT_DMP_FORWARD
+
+def should_enable_reporter_agent():
+    """是否启用reporter-agent"""
+    return INPUT_DATA_AGENT_DEFAULT_REPORTER_AGENT
+
+def get_default_partner():
+    """获取默认partner设置"""
+    return INPUT_DATA_AGENT_DEFAULT_PARTNER
+
+def should_enable_self_email():
+    """是否启用self-email"""
+    return INPUT_DATA_AGENT_DEFAULT_SELF_EMAIL
+
+def get_default_days_ago():
+    """获取默认days-ago参数"""
+    return INPUT_DATA_AGENT_DEFAULT_DAYS_AGO
+
+def build_input_data_agent_command_args(import_file=None, **kwargs):
+    """
+    构建Input Data Agent的命令行参数
+    
+    Args:
+        import_file: 要导入的文件路径
+        **kwargs: 其他参数覆盖默认值
+    
+    Returns:
+        dict: 命令行参数字典
+    """
+    default_args = get_input_data_agent_default_args()
+    
+    # 合并默认参数和传入的参数
+    args = default_args.copy()
+    args.update(kwargs)
+    
+    # 构建命令行参数列表
+    cmd_args = []
+    
+    if import_file:
+        cmd_args.extend(['--import', import_file])
+    
+    if args.get('passthrough', False):
+        cmd_args.append('--passthrough')
+    
+    if args.get('dmp_forward', False):
+        cmd_args.append('--dmp-forward')
+    
+    if args.get('reporter_agent', False):
+        cmd_args.append('--reporter-agent')
+    
+    if args.get('partner'):
+        cmd_args.extend(['--partner', args['partner']])
+    
+    if args.get('self_email', False):
+        cmd_args.append('--self-email')
+    
+    if args.get('days_ago'):
+        cmd_args.extend(['--days-ago', str(args['days_ago'])])
+    
+    return cmd_args
 
 # =============================================================================
