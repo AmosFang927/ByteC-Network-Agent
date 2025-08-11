@@ -51,12 +51,29 @@ class DataImporter:
     def __init__(self):
         self.input_dir = Path(INPUT_DATA_DIR)
         self.output_dir = Path(INPUT_DATA_OUTPUT_DIR)
+        self.current_filename = None  # 添加當前文件名跟踪
         self.ensure_directories()
         
     def ensure_directories(self):
         """确保必要的目录存在"""
         self.input_dir.mkdir(exist_ok=True)
         self.output_dir.mkdir(exist_ok=True)
+    
+    def _detect_platform_from_filename(self) -> str:
+        """從文件名檢測平台"""
+        if not self.current_filename:
+            return 'AT_BM'  # 默認
+            
+        filename_lower = self.current_filename.lower()
+        
+        if '_ls_bm' in filename_lower or 'linkshare' in filename_lower:
+            return 'LS_BM'
+        elif '_at_bm' in filename_lower or 'access_trade' in filename_lower:
+            return 'AT_BM'
+        elif '_ia_bm' in filename_lower or 'involve_asia' in filename_lower:
+            return 'IA_BM'
+        else:
+            return 'AT_BM'  # 默認
         
     def analyze_data_with_pandasai(self, df):
         """使用详细分析器分析数据"""
@@ -269,9 +286,10 @@ class DataImporter:
             df['Partner'] = df[source_column].apply(classify_partner)
             logger_info(f"使用 {source_column} 字段添加Partner分类，分布: {df['Partner'].value_counts().to_dict()}")
         else:
-            # 如果没有找到有效的source字段，使用默认值
-            df['Partner'] = 'AT_BM'  # AccessTrade默认Partner
-            logger_info("未找到有效的source字段，使用默认Partner: AT_BM")
+            # 如果没有找到有效的source字段，從文件名檢測平台
+            detected_platform = self._detect_platform_from_filename()
+            df['Partner'] = detected_platform
+            logger_info(f"未找到有效的source字段，使用檢測到的平台: {detected_platform}")
         
         return df
     
@@ -390,6 +408,9 @@ class DataImporter:
     def import_data(self, filename, passthrough=False):
         """导入数据的主函数"""
         try:
+            # 設置當前文件名以供平台檢測
+            self.current_filename = filename
+            
             # 1. 读取文件（支持Excel和CSV）
             # 检查是否是完整路径
             if Path(filename).is_absolute() or '/' in filename or '\\' in filename:

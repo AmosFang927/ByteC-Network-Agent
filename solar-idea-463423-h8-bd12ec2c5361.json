@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "solar-idea-463423-h8",
+  "private_key_id": "bd12ec2c5361c859e0ec93f1d76b7da53d5b1443",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCu1UvwDMwpZEUd\nhXDLh9sswfXOnqVo16+fNrq/gqvfFH58GlpX2Z1J6v7mMaUMldQLPdjNDYMtdg8r\n9dgq68Gc/TFHtdibJWKtx8ojPyznOMw7Xuz7M1Dl0HKnfQKwVFXkWRiat4baAdrh\nWTTB8ppgCJA0w80m751I7GThrnYmuK7WjM/ksOAEWnNTc4BOpJ+hDi6f5vgj1uFS\n+OPxaHSI0hb68mnRkhvqGoMFjFkUVzUtdhK33tsrE9bfCsWgW7zbmhWzWdajjkfK\nTlHsnE/WNTqvH2k937rkaF9jTk03v2E4reACBq7PxsZYANjE/Df3ANtHvv/Qgw43\nZppuA9dhAgMBAAECggEAGELPC9uqxR+om6UgduM+XeKjKpicmYTnVlpbkHx16eSd\nJ2Q8ydi6g+m76ij/dKn3R9a9lrmGTNuyKpvYncl4ukFEV7rQo7mMt6ge0Rn7hYaT\nM2CZKsP/ON+JLtwhGw5I8QFlcarVaBE+f2udROtWfXcSvnphUJg1pPXw4IRmLuR8\nqvs/TzYyHSb1vINVvoG/iKQ/flz4v423j7N0dNdIojfukbVyjMa1eYc6dlnmQcj0\nkMuwy22zZQ6Foof3Q5O5p8oQ014wnx7/BGzJLfBy3qq0StF+XNbKCovzOCxP0o9b\n/TIZspngUvWIUGNfF5hyY14vuzIYkbb5oTKH1mXg1QKBgQDyNSR7O2KyigyVqJ97\nf/fFKiooH2yN0i8KNDyyA1wk/Kp1MvefXelfi30nlfR3CwggUrOtocHdZWqpPpx1\n6ybgS8rVxwGXb/DTU7bdeHq6pKdVvXqxrm9ZqwX2y8UQkgGm2erzlfLmCNtWUlDv\nO7/FOK/2wzJVIxrQIYZcjwN+mwKBgQC4yfuLOuhyKXAxSS0J6CVcHAykI9qDo33Y\n+byrTT9N2Ck5Q2BzJRPWU3dr4xIZkxqGq2eks163Oief5wDYGFu9HSCcv2r3bkBq\n0wVhSqioidCLOfmB3rtHgUJrLZ+DOLkHxlbcad/2nkanGBPbc/MLX+o10jy/cC0j\nSrBnzmuDswKBgGXlK4LYee4om6C+ftGjBWaiFXgpuC511SpSzZIKTdKVpVSG65vV\nE2AJu85SjLUkI/gNMuACJB/zEYs/9uy4z/Mej6eeADJoeoU9O7oyfFdW+7rbaumj\nO98aTvkDwtT0x9Mc7HYriDN0WGoZWUk79rKO5aBHgD5G9XnIENGRrOOvAoGAcn+0\n/XBi11oVynQtFBZkD87RhmMw4qBLOkaEQSB8OR/Xa0P0X2R6BjNxq8fnTzF3HjrW\n3ZbG+YFvTAU24K83KNcDfhydivMltwtKKh64orXCIoKpt27rXEMbhI2gaQ6cl9St\nvaVcwNMRtDeXFkOiNUoZNYAvY+9+CIAfDjM5K0ECgYEAr2eyG8HXOYLBab8adCyn\n3Ecp0kw0kwCFDyAGJQ5brUuVyGAp7pD1sLEiuNIrG8AAIMDNGn1QsvTCs4pgDpxH\nSXkeli0iFoQr/i3TMv+nkcNVm/MAWMOuA2WLgP+EsKgPBpVJAiwS7IvysCNIG3xe\nYpyASUpTixKTe4e7Z3Zepog=\n-----END PRIVATE KEY-----\n",
+  "client_email": "bytec-network-agent@solar-idea-463423-h8.iam.gserviceaccount.com",
+  "client_id": "116671216675931297882",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/bytec-network-agent%40solar-idea-463423-h8.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

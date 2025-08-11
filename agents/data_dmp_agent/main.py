@@ -119,7 +119,7 @@ class DMPAgent:
                 'involve_asia': 'IA_BM',
                 'shopee': 'SHOPEE',
                 'tiktok_shop': 'TIKTOK_SHOP',
-                'linkshare': 'LS_MB'
+                'linkshare': 'LS_BM'  # 更新為 LS_BM
             }
             return platform_mapping.get(detected_platform, detected_platform.upper())
         
@@ -130,6 +130,8 @@ class DMPAgent:
             return 'AT_BM'
         elif '_ia_bm' in filename_lower:
             return 'IA_BM'
+        elif '_ls_bm' in filename_lower:
+            return 'LS_BM'
         elif '_ia_ot' in filename_lower:
             return 'IA_OT'
         elif '_ia_mb' in filename_lower:
@@ -150,7 +152,7 @@ class DMPAgent:
                     'involve_asia': 'IA_BM',
                     'shopee': 'SHOPEE',
                     'tiktok_shop': 'TIKTOK_SHOP',
-                    'linkshare': 'LS_MB'
+                    'linkshare': 'LS_BM'
                 }
                 return platform_mapping.get(detected_platform, detected_platform.upper())
             
@@ -272,10 +274,12 @@ class DMPAgent:
             'platform': 'Platform',
             'order_id': 'Order ID',
             'status': 'Status',
+            'conversion_status': 'Status',
             
-            # 金額字段
-            'usd_sale_amount': 'Local Sale Amount',
+            # 金額字段 - 修复：原始IDR金额映射到Local Sale Amount，USD金额单独处理
             'sale_amount': 'Local Sale Amount',
+            'local_sale_amount': 'Local Sale Amount',
+            'usd_sale_amount': 'USD Sale Amount',
             'usd_payout': 'Local Reward',
             'payout': 'Local Reward',
             
@@ -310,17 +314,17 @@ class DMPAgent:
                 logger.debug(f"映射: {original_col} -> {unified_col}")
         
         # 添加缺失的必需統一字段（使用默認值）
+        # 这是最小化的核心字段集，基于Google Sheets中的unified fields
         required_unified_fields = [
             'Conversion ID', 'Partner', 'Platform', 'Order ID', 'Status',
-            'Local Sale Amount', 'Local Reward', 'Datetime Conversion',
-            'Publisher Sub ID 1', 'Publisher Sub ID 2', 'Publisher Sub ID 3',
-            'Advertiser', 'Campaign Name', 'Click ID'
+            'USD Sale Amount', 'Local Sale Amount', 'Local Reward', 'Datetime Conversion',
+            'Advertiser', 'Campaign Name'
         ]
         
         for field in required_unified_fields:
             if field not in unified_df.columns:
                 # 根據字段類型設置默認值
-                if field in ['Local Sale Amount', 'Local Reward']:
+                if field in ['USD Sale Amount', 'Local Sale Amount', 'Local Reward']:
                     unified_df[field] = 0.0
                 elif field in ['Conversion ID']:
                     unified_df[field] = df.get('conversion_id', 'N/A')
@@ -383,6 +387,59 @@ class DMPAgent:
         }
         
         try:
+            # 根據平台直接創建相應的處理器
+            if platform == 'AT_BM':
+                processor = ATBMDataProcessor()
+                processor_result = processor.process_at_bm_file(file_path)
+                
+                if processor_result['success']:
+                    result.update({
+                        'success': True,
+                        'records_count': processor_result['records_processed'],
+                        'processed_data': processor_result.get('output_file'),
+                        'stats': processor_result.get('stats', {}),
+                        'mapping_info': processor_result.get('mapping_info', {})
+                    })
+                    # 保存最新的AT_BM輸出文件路徑（用於passthrough模式）
+                    self._current_at_bm_output_file = processor_result.get('output_file')
+                    return result
+                else:
+                    result.update({
+                        'success': False,
+                        'error': processor_result.get('error', 'AT_BM processing failed'),
+                        'stats': processor_result.get('stats', {})
+                    })
+                    return result
+                    
+            elif platform == 'LS_BM':
+                try:
+                    from .ls_bm_data_processor import LSBMDataProcessor
+                except ImportError:
+                    from agents.data_dmp_agent.ls_bm_data_processor import LSBMDataProcessor
+                    
+                processor = LSBMDataProcessor()
+                processor_result = processor.process_ls_bm_file(file_path)
+                
+                if processor_result['success']:
+                    result.update({
+                        'success': True,
+                        'records_count': processor_result['records_processed'],
+                        'processed_data': processor_result.get('output_file'),
+                        'stats': processor_result.get('stats', {}),
+                        'mapping_info': processor_result.get('mapping_info', {})
+                    })
+                    # 保存LS_BM輸出文件路徑
+                    self._current_ls_bm_output_file = processor_result.get('output_file')
+                    return result
+                else:
+                    result.update({
+                        'success': False,
+                        'error': processor_result.get('error', 'LS_BM processing failed'),
+                        'stats': processor_result.get('stats', {})
+                    })
+                    return result
+            
+            # 如果不是特定平台處理器，則使用通用處理邏輯
             # 讀取檔案
             import pandas as pd
             
@@ -507,7 +564,8 @@ class DMPAgent:
                     'IA_OT': 'involve_asia',
                     'SHOPEE': 'shopee',
                     'TIKTOK_SHOP': 'tiktok_shop',
-                    'LS_MB': 'linkshare'
+                    'LS_MB': 'linkshare',
+                    'LS_BM': 'linkshare'
                 }
                 
                 mapping_platform = platform_mapping.get(platform, platform.lower())
@@ -742,7 +800,7 @@ class DMPAgent:
         if all_data and not passthrough:
             self._save_merged_file(all_data, merged_filename)
         
-        # 🎯 Passthrough模式特殊處理：為AT_BM文件生成Reporter Agent格式的DMP temp文件
+        # 🎯 Passthrough模式特殊處理：為AT_BM和LS_BM文件生成Reporter Agent格式的DMP temp文件並更新Passthrough文件
         if passthrough and len(file_paths) == 1:
             file_path = file_paths[0]
             platform = self.detect_platform_from_filename(file_path)
@@ -760,6 +818,20 @@ class DMPAgent:
                     await self._generate_reporter_format_temp_file(at_bm_processed_file, platform, all_data)
                 else:
                     logger.warning("⚠️ 未找到AT_BM處理結果文件，跳過Reporter格式轉換")
+            
+            elif platform and 'LS_BM' in platform:
+                logger.info("🎯 LS_BM Passthrough模式: 更新Passthrough文件並生成DMP temp文件...")
+                
+                # 查找最新的LS_BM處理結果文件
+                ls_bm_processed_file = None
+                if hasattr(self, '_current_ls_bm_output_file') and self._current_ls_bm_output_file:
+                    ls_bm_processed_file = self._current_ls_bm_output_file
+                    logger.info(f"🔍 找到LS_BM處理結果文件: {ls_bm_processed_file}")
+                
+                if ls_bm_processed_file and os.path.exists(ls_bm_processed_file):
+                    await self._update_passthrough_file_with_ls_bm_data(file_path, ls_bm_processed_file)
+                else:
+                    logger.warning("⚠️ 未找到LS_BM處理結果文件，跳過Passthrough文件更新")
         
         return {
             'individual_results': results,
@@ -936,6 +1008,74 @@ class DMPAgent:
             import traceback
             logger.error(f"錯誤詳情: {traceback.format_exc()}")
             return None
+    
+    async def _update_passthrough_file_with_ls_bm_data(self, original_csv_path: str, ls_bm_processed_file: str):
+        """
+        使用LS_BM處理後的數據更新對應的Passthrough文件
+        
+        Args:
+            original_csv_path: 原始CSV文件路徑
+            ls_bm_processed_file: LS_BM處理結果文件路徑
+        """
+        try:
+            import pandas as pd
+            import glob
+            import os
+            from pathlib import Path
+            
+            logger.info("🔄 開始更新Passthrough文件，使用LS_BM處理後的數據...")
+            
+            # 從原始CSV文件名推導對應的Passthrough Excel文件
+            csv_name = os.path.basename(original_csv_path)
+            base_name = csv_name.replace('.csv', '')
+            
+            # 查找對應的Passthrough Excel文件
+            passthrough_pattern = f"output/Passthrough_{base_name}_*.xlsx"
+            passthrough_files = glob.glob(passthrough_pattern)
+            
+            if not passthrough_files:
+                logger.warning(f"⚠️ 未找到對應的Passthrough文件，模式: {passthrough_pattern}")
+                return
+            
+            # 使用最新的文件
+            passthrough_file = max(passthrough_files, key=os.path.getmtime)
+            logger.info(f"🔄 找到對應的Passthrough文件: {passthrough_file}")
+            
+            # 讀取LS_BM處理後的數據
+            if ls_bm_processed_file.endswith('.csv'):
+                processed_df = pd.read_csv(ls_bm_processed_file)
+            else:
+                processed_df = pd.read_excel(ls_bm_processed_file)
+            
+            logger.info(f"📊 讀取LS_BM處理後數據: {len(processed_df)} 條記錄, {len(processed_df.columns)} 列")
+            logger.info(f"📋 LS_BM處理後欄位: {list(processed_df.columns)}")
+            
+            # 檢查必要字段
+            if 'Partner' in processed_df.columns:
+                partner_stats = processed_df['Partner'].value_counts()
+                logger.info(f"📊 Partner統計: {partner_stats.to_dict()}")
+            
+            if 'Source' in processed_df.columns:
+                source_stats = processed_df['Source'].value_counts()
+                logger.info(f"📊 Source統計: {source_stats.head().to_dict()}")
+            
+            # 備份原始Passthrough文件
+            backup_path = passthrough_file.replace('.xlsx', '_backup.xlsx')
+            import shutil
+            shutil.copy2(passthrough_file, backup_path)
+            logger.info(f"💾 已備份原始Passthrough文件到: {backup_path}")
+            
+            # 將LS_BM處理後的數據寫入Passthrough文件
+            with pd.ExcelWriter(passthrough_file, engine='openpyxl') as writer:
+                processed_df.to_excel(writer, sheet_name='Data', index=False)
+            
+            logger.info(f"✅ 成功更新Passthrough文件，現在包含LS_BM處理後的數據")
+            logger.info(f"🎯 Reporter Agent將讀取到正確的Partner和Source字段")
+            
+        except Exception as e:
+            logger.error(f"❌ 更新Passthrough文件失敗: {e}")
+            import traceback
+            logger.error(f"錯誤詳情: {traceback.format_exc()}")
     
     async def initialize(self, skip_db_check: bool = False):
         """初始化DMP代理"""
@@ -1246,7 +1386,8 @@ class DMPAgent:
                             'IA_OT': 'involve_asia',
                             'SHOPEE': 'shopee',
                             'TIKTOK_SHOP': 'tiktok_shop',
-                            'LS_MB': 'linkshare'
+                            'LS_MB': 'linkshare',
+                            'LS_BM': 'linkshare'
                         }
                         mapping_platform = platform_mapping.get(platform, platform.lower())
                         logger.info(f"🔄 Platform映射: {platform} -> {mapping_platform}")
@@ -1605,7 +1746,9 @@ class DMPAgent:
             # 確保必要的欄位存在並調整欄位名稱以匹配 Passthrough 格式
             column_mapping = {
                 'conversion_id': 'Conversion ID',
-                'datetime_conversion': 'Conversion Date', 
+                'datetime_conversion': 'Datetime Conversion',  # 🔧 修復：保持統一的日期欄位名稱
+                'Datetime Conversion': 'Datetime Conversion',   # 🔧 確保已存在的欄位不被改名
+                'Conversion Date': 'Datetime Conversion',       # 🔧 舊格式兼容性
                 'usd_sale_amount': 'Sale Amount (USD)',
                 'USD Sale Amount': 'Sale Amount (USD)',  # 額外映射
                 'sale_amount': 'Sale Amount (USD)',      # 額外映射
@@ -1662,7 +1805,7 @@ class DMPAgent:
             
             # 選擇 Passthrough 格式需要的欄位
             passthrough_columns = [
-                'Conversion ID', 'Conversion Date', 'Advertiser', 'Order ID', 
+                'Conversion ID', 'Datetime Conversion', 'Advertiser', 'Order ID', 
                 'Sale Amount (USD)', 'Publisher Sub ID 1', 'Status', 
                 'Publisher Sub ID 2', 'Publisher Sub ID 3', 'Publisher Sub ID 4', 
                 'Publisher Sub ID 5', 'Advertiser Sub ID 2', 'Advertiser Sub ID 3', 
@@ -1936,7 +2079,8 @@ class DMPAgent:
                     'IA_OT': 'involve_asia',
                     'SHOPEE': 'shopee',
                     'TIKTOK_SHOP': 'tiktok_shop',
-                    'LS_MB': 'linkshare'
+                    'LS_MB': 'linkshare',
+                    'LS_BM': 'linkshare'
                 }
                 
                 mapping_platform = platform_mapping.get(platform, platform.lower())

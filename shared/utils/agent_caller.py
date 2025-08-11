@@ -134,6 +134,13 @@ class AgentCaller:
                     break
             
             if import_file:
+                # 🔧 關鍵修復：確保傳遞絕對路徑給 DMP Agent
+                if not os.path.isabs(import_file):
+                    # 如果是相對路徑，添加 input/ 前綴並轉換為絕對路徑
+                    if not import_file.startswith('input/'):
+                        import_file = f"input/{import_file}"
+                    import_file = os.path.abspath(import_file)
+                
                 logger.info(f"🎯 Passthrough模式使用--import: {import_file}")
                 cmd.extend(['--import', import_file])
                 

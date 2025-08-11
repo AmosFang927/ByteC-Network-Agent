@@ -616,9 +616,15 @@ class ReportGenerator:
                                     cell = ws.cell(row=row_idx, column=col_idx, value=cleaned_value)
                                     
                                     # 設置數據格式
-                                    if isinstance(value, (int, float)):
+                                    header_name = headers[col_idx-1]
+                                    
+                                    # ID字段应该格式化为文本，防止科学记数法
+                                    if any(id_field in header_name for id_field in ['ID', 'Id', 'id', 'Conversion ID', 'Order ID', 'Offer ID']):
+                                        cell.number_format = '@'  # 文本格式
+                                        cell.alignment = data_alignment
+                                    elif isinstance(value, (int, float)):
                                         cell.alignment = number_alignment
-                                        if 'USD Sale Amount' in headers[col_idx-1]:
+                                        if 'USD Sale Amount' in header_name:
                                             cell.number_format = '"$"#,##0.00'
                                     else:
                                         cell.alignment = data_alignment

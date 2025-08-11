@@ -171,12 +171,12 @@ class DataInputAgent:
                     self.logger.info("🔗 转发数据到DMP Agent (Passthrough模式: 不插入Cloud SQL，产生temp excel)...")
                 else:
                     self.logger.info("🔗 转发数据到DMP Agent (标准模式: 插入Cloud SQL)...")
-                dmp_result = await self._forward_to_dmp_agent(result['output_path'], filename, days_ago, partner, passthrough, self_email)
+                dmp_result = await self._forward_to_dmp_agent(result['output_path'], filename, days_ago, partner, passthrough, self_email, start_date, end_date)
                 result['dmp_forward'] = dmp_result
             
             if reporter_agent and not analyze_only:
                 self.logger.info("📊 转发数据到Reporter Agent...")
-                reporter_result = await self._forward_to_reporter_agent(result, days_ago, partner, self_email)
+                reporter_result = await self._forward_to_reporter_agent(result, days_ago, partner, self_email, start_date, end_date)
                 result['reporter_forward'] = reporter_result
             
             self.stats['files_processed'] += 1

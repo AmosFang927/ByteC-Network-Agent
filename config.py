@@ -85,7 +85,7 @@ TARGET_PARTNER = None  # 指定要处理的Partner，None表示处理所有Partn
 PARTNER_SOURCES_MAPPING = {
     "RAMPUP": {
         "sources": ["RAMPUP"],  # RAMPUP, RPIDxxx... 等以RAMPUP或RPID开头的
-        "pattern": r"^(RAMPUP|RPID.*|AF.*)",  # 正则表达式匹配模式 - 包含RAMPUP、RPID和AF开头的Sources
+        "pattern": r"^(RAMPUP|RPID.*|AF.*|RPVN.*)",  # 正则表达式匹配模式 - 包含RAMPUP、RPID、AF和RPVN开头的Sources
         "email_enabled": True,  # 邮件发送开关
         #"email_recipients": ["amosfang927@gmail.com"]  # 收件人列表
         "email_recipients": ["max@rampupads.com", "offer@rampupads.com", "bill.zhang@rampupads.com"],
@@ -94,7 +94,7 @@ PARTNER_SOURCES_MAPPING = {
     },
     "FTK": {
         "sources": ["FTK"],  # FTK source
-        "pattern": r"^FTK.*",  # 匹配以FTK开头的所有Sources - 必須在DeepLeaper之前檢查！
+        "pattern": r"^FTK.*",  # 只要以FTK開頭一律歸為FTK（不再排除XIAOMI/VIVO/OPPO/OEM）
         "email_enabled": True,  # 邮件发送开关
         "email_recipients": ["AmosFang927@gmail.com"],  # 收件人列表（请修改为实际的FTK邮箱）
         "show_invalid_warning": True,  # FTK partner保持原有的invalid warning顯示邏輯
@@ -182,8 +182,8 @@ DMP_PASSTHROUGH_REMOVE_COLUMNS = [
     "USD Payout",
     "USD Reward", 
     "original_usd_sale_amount",
-    "Local Reward",
-    "Local Sale Amount"
+    "Local Reward"
+    # 注意：不移除 "Local Sale Amount" 因为Reporter Agent需要它来转换为USD Sale Amount
 ]  # DMP Agent passthrough模式下要移除的栏位
 
 # =============================================================================
@@ -394,17 +394,26 @@ def get_pattern_for_partner(partner_name):
     return partner_config.get('pattern', '')
 
 def match_source_to_partner(source_name):
-    """将Source映射到对应的Partner"""
+    """將 Source 映射到對應的 Partner（大小寫不敏感）"""
     import re
+    if not source_name:
+        return source_name or 'Unknown'
+
+    # 規範化大小寫
+    src_lower = str(source_name).strip()
+
     for partner, config in PARTNER_SOURCES_MAPPING.items():
-        # 先检查sources列表
-        if source_name in config.get('sources', []):
+        # 先檢查 sources 列表（大小寫不敏感）
+        sources_list = config.get('sources', [])
+        if any(src_lower.lower() == s.lower() for s in sources_list):
             return partner
-        # 再检查正则表达式模式
+
+        # 再檢查正則表達式（大小寫不敏感）
         pattern = config.get('pattern', '')
-        if pattern and re.match(pattern, source_name):
+        if pattern and re.match(pattern, src_lower, flags=re.IGNORECASE):
             return partner
-    # 如果没有匹配到，返回原始source_name作为partner
+
+    # 如果沒有匹配到，返回原始 source_name 作為 partner
     return source_name
 
 def get_partner_email_config(partner_name):
@@ -1050,7 +1059,6 @@ INPUT_DATA_OUTPUT_TEMPLATE = "Processed_{original_filename}_{timestamp}.xlsx"
 STANDARD_REPORT_COLUMNS = [
     'Conversion ID',
     'Datetime Conversion',
-    'Order ID',
     'USD Sale Amount',
     'Advertiser',  # 添加缺失的 Advertiser 欄位
     'Publisher Sub ID 1',
@@ -1071,7 +1079,6 @@ STANDARD_REPORT_COLUMNS = [
 # DMP Agent 輸出標準化列名映射
 DMP_OUTPUT_COLUMN_MAPPING = {
     'conversion_id': 'Conversion ID',
-    'order_id': 'Order ID', 
     'conversion_date': 'Datetime Conversion',
     'usd_sale_amount': 'USD Sale Amount',
     'advertiser': 'Advertiser',  # 添加 Advertiser 欄位映射
@@ -1094,7 +1101,6 @@ NUMERIC_COLUMNS = ['Conversion ID', 'USD Sale Amount']
 # Reporter Agent 預設值配置
 COLUMN_DEFAULT_VALUES = {
     'Conversion ID': 0,
-    'Order ID': 'Unknown',
     'USD Sale Amount': 0.0,
     'Status': 'Pending',
     # Publisher Sub ID 1~5, Advertiser Sub ID 1~5 預設為空字符串

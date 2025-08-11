@@ -147,7 +147,7 @@ class FileReportGenerator:
             missing_columns = []
             # 檢查多種可能的欄位名稱格式
             amount_column = None
-            possible_amount_columns = ['USD Sale Amount', 'Sale Amount (USD)', 'Sale Amount', 'usd_sale_amount']
+            possible_amount_columns = ['USD Sale Amount', 'Sale Amount (USD)', 'Sale Amount', 'usd_sale_amount', 'sale_amount', 'Local Sale Amount']
             for col in possible_amount_columns:
                 if col in df.columns:
                     amount_column = col
@@ -175,10 +175,32 @@ class FileReportGenerator:
                 if 'Status' not in df.columns:
                     df['Status'] = 'Pending'
             
+            # 🔧 货币转换逻辑：如果发现Local Sale Amount字段，转换为USD Sale Amount
+            if 'Local Sale Amount' in df.columns and 'USD Sale Amount' not in df.columns:
+                try:
+                    # 使用IDR到USD的转换 (1 USD ≈ 15400 IDR)
+                    IDR_TO_USD_RATE = 15400.0
+                    df['USD Sale Amount'] = df['Local Sale Amount'].apply(
+                        lambda x: round(float(x) / IDR_TO_USD_RATE, 6) if pd.notna(x) and x != '' and x != 0 else 0.0
+                    )
+                    logger.info("✅ 成功将Local Sale Amount转换为USD Sale Amount")
+                    
+                    # 记录转换统计
+                    total_idr = df['Local Sale Amount'].sum()
+                    total_usd = df['USD Sale Amount'].sum()
+                    logger.info(f"💰 汇率转换: IDR {total_idr:,.0f} → USD ${total_usd:,.6f} (汇率: 1 USD = {IDR_TO_USD_RATE} IDR)")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Local Sale Amount转换失败: {e}")
+                    df['USD Sale Amount'] = 0.0
+
             # 添加欄位名稱標準化映射
             column_mapping = {
-                'Conversion Date': 'Datetime Conversion',
+                'Conversion Date': 'Datetime Conversion',  # 舊格式兼容
+                'Datetime Conversion': 'Datetime Conversion',  # 🔧 確保統一欄位名稱不被改變
                 'Sale Amount (USD)': 'USD Sale Amount',
+                'sale_amount': 'USD Sale Amount',  # 🔧 添加sale_amount到USD Sale Amount的映射
+                'usd_sale_amount': 'USD Sale Amount',  # 🔧 添加usd_sale_amount到USD Sale Amount的映射
                 'Publisher Sub ID 1': 'Aff Sub1',
                 'Publisher Sub ID 2': 'Aff Sub2', 
                 'Publisher Sub ID 3': 'Aff Sub3',
@@ -195,7 +217,7 @@ class FileReportGenerator:
             logger.info(f"✅ 欄位標準化完成，更新後欄位: {list(df.columns)}")
             
             # 更新 amount_column 的引用
-            if amount_column == 'Sale Amount (USD)':
+            if amount_column in ['Sale Amount (USD)', 'sale_amount', 'usd_sale_amount']:
                 amount_column = 'USD Sale Amount'
             
             # 🚨 重要：應用 DMP_PASSTHROUGH_REMOVE_COLUMNS 移除不需要的欄位
@@ -358,7 +380,7 @@ class FileReportGenerator:
             
             # 發送郵件和上傳飛書
             if send_email and excel_files:
-                await self._send_single_partner_email(partner_summary, self_email)
+                await self._send_single_partner_email(partner_summary, self_email, start_date, end_date)
             
             if upload_feishu and excel_files:
                 await self._upload_single_partner_feishu(excel_files, partner_name)
@@ -471,7 +493,7 @@ class FileReportGenerator:
             total_records = len(valid_df)
             # 支持多種金額欄位名稱格式
             amount_column = None
-            possible_amount_columns = ['USD Sale Amount', 'Sale Amount (USD)', 'Sale Amount', 'usd_sale_amount']
+            possible_amount_columns = ['USD Sale Amount', 'Sale Amount (USD)', 'Sale Amount', 'usd_sale_amount', 'Local Sale Amount']
             for col in possible_amount_columns:
                 if col in partner_df.columns:
                     amount_column = col
@@ -913,7 +935,8 @@ class FileReportGenerator:
                 'partner_results': {}
             }
     
-    async def _send_single_partner_email(self, partner_summary: PartnerSummary, self_email: bool):
+    async def _send_single_partner_email(self, partner_summary: PartnerSummary, self_email: bool,
+                                          start_date: Optional[str] = None, end_date: Optional[str] = None):
         """發送單個Partner的郵件"""
         try:
             logger.info(f"📧 準備發送 {partner_summary.partner_name} 的郵件，file_path: {partner_summary.file_path}")
@@ -921,7 +944,7 @@ class FileReportGenerator:
                 logger.warning(f"⚠️ {partner_summary.partner_name} 的file_path為None，跳過郵件發送")
                 return
                 
-            await self._send_all_partner_emails([partner_summary.file_path], self_email)
+            await self._send_all_partner_emails([partner_summary.file_path], self_email, start_date, end_date)
             
         except Exception as e:
             logger.error(f"❌ 發送 {partner_summary.partner_name} 郵件失敗: {e}")
@@ -1127,13 +1150,20 @@ class FileReportGenerator:
         try:
             filename = os.path.basename(file_path)
             
-            # 匹配8位数字日期格式（YYYYMMDD）
+            # 🎯 修復：優先匹配 YYYY-MM-DD 格式（Reporter生成的Excel文件名）
+            match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+            if match:
+                date_str = match.group(1)
+                logger.info(f"📅 從文件名提取日期 (YYYY-MM-DD格式): {date_str}")
+                return date_str
+            
+            # 匹配8位数字日期格式（YYYYMMDD）- 原始数据文件名
             match = re.search(r'(\d{8})', filename)
             if match:
                 date_str = match.group(1)
                 # 格式化為 YYYY-MM-DD
                 formatted_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
-                logger.info(f"📅 從文件名提取日期: {formatted_date}")
+                logger.info(f"📅 從文件名提取日期 (YYYYMMDD格式): {formatted_date}")
                 return formatted_date
             
             # 備用方案：使用昨天日期
@@ -1152,9 +1182,16 @@ class FileReportGenerator:
             # 嘗試從文件名中提取日期，支持多種格式：
             # 1. 'publisher-conversion-report--LXTlT9i5-20250725.csv'
             # 2. 'DMP_temp_DeepLeaper_20250804_215355.xlsx'
+            # 3. 'DeepLeaper_ConversionReport_2025-08-07_to_2025-08-07.xlsx'
             filename = os.path.basename(import_file_path)
             
-            # 匹配8位数字日期格式（YYYYMMDD）
+            # 🎯 修復：優先匹配 YYYY-MM-DD 格式（Reporter生成的Excel文件名）
+            match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+            if match:
+                date_str = match.group(1)
+                return f"{date_str}_to_{date_str}"
+            
+            # 匹配8位数字日期格式（YYYYMMDD）- 原始数据文件名
             match = re.search(r'(\d{8})', filename)
             if match:
                 date_str = match.group(1)

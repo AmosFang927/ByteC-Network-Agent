@@ -1,0 +1,26 @@
+{
+  "google_sheets": {
+    "enabled": true,
+    "project_id": "solar-idea-463423-h8",
+    "credentials_file": "solar-idea-463423-h8-bd12ec2c5361.json",
+    "spreadsheet_id": "1SaHZ0igiuMBm2gHFD5JSs1hkltphdXqRAlbaZ9nEUf0",
+    "sheet_name": "Data_Input_Mapping",
+    "range": "A1:Z1000",
+    "cache_duration": 300
+  },
+  "fallback_config": {
+    "local_file": "config/field_mappings.json",
+    "enabled": true
+  },
+  "standard_fields": {
+    "platform": "平台名稱",
+    "advertiser_name": "廣告主名稱",
+    "campaign_name": "活動名稱",
+    "offer_name": "商品名稱",
+    "conversion_amount": "轉換金額",
+    "conversion_date": "轉換日期",
+    "currency": "貨幣",
+    "source_file": "來源檔案",
+    "processed_date": "處理日期"
+  }
+}

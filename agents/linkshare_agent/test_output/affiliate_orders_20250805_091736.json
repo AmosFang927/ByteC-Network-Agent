@@ -1,0 +1,86 @@
+{
+  "success": true,
+  "orders": [
+    {
+      "orderId": "ORDER_001",
+      "status": "COMPLETED",
+      "createTime": 1754270256,
+      "updateTime": 1754356656,
+      "orderAmount": 100.5,
+      "commissionAmount": 10.05,
+      "commissionRate": 10.0,
+      "product": {
+        "productId": "PROD_001",
+        "productName": "测试产品1",
+        "price": 50.25,
+        "quantity": 2
+      },
+      "campaign": {
+        "campaignId": "CAMP_001",
+        "campaignName": "测试活动1"
+      },
+      "user": {
+        "userId": "USER_001",
+        "userName": "测试用户1"
+      },
+      "orderSource": "TIKTOK_SHOP",
+      "paymentMethod": "CREDIT_CARD",
+      "remark": "测试订单1"
+    },
+    {
+      "orderId": "ORDER_002",
+      "status": "PENDING",
+      "createTime": 1754353056,
+      "updateTime": 1754354856,
+      "orderAmount": 200.0,
+      "commissionAmount": 20.0,
+      "commissionRate": 10.0,
+      "product": {
+        "productId": "PROD_002",
+        "productName": "测试产品2",
+        "price": 200.0,
+        "quantity": 1
+      },
+      "campaign": {
+        "campaignId": "CAMP_002",
+        "campaignName": "测试活动2"
+      },
+      "user": {
+        "userId": "USER_002",
+        "userName": "测试用户2"
+      },
+      "orderSource": "TIKTOK_SHOP",
+      "paymentMethod": "DEBIT_CARD",
+      "remark": "测试订单2"
+    },
+    {
+      "orderId": "ORDER_003",
+      "status": "CANCELLED",
+      "createTime": 1754349456,
+      "updateTime": 1754353056,
+      "orderAmount": 150.75,
+      "commissionAmount": 0.0,
+      "commissionRate": 0.0,
+      "product": {
+        "productId": "PROD_003",
+        "productName": "测试产品3",
+        "price": 150.75,
+        "quantity": 1
+      },
+      "campaign": {
+        "campaignId": "CAMP_001",
+        "campaignName": "测试活动1"
+      },
+      "user": {
+        "userId": "USER_003",
+        "userName": "测试用户3"
+      },
+      "orderSource": "TIKTOK_SHOP",
+      "paymentMethod": "WALLET",
+      "remark": "已取消订单"
+    }
+  ],
+  "totalCount": 3,
+  "nextPageToken": "next_page_token_123",
+  "httpStatus": 200
+}

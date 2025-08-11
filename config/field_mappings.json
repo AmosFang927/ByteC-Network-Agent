@@ -1,0 +1,146 @@
+{
+  "platforms": {
+    "involve_asia": {
+      "field_mappings": {
+        "advertiser_name": "Advertiser Name",
+        "campaign_name": "Campaign Name",
+        "offer_name": "Offer Name",
+        "conversion_amount": "Sale Amount (USD)",
+        "conversion_date": "Conversion Date",
+        "currency": "Currency",
+        "publisher_id": "Publisher ID",
+        "publisher_name": "Publisher Name"
+      },
+      "data_transformations": {
+        "conversion_amount": {
+          "type": "currency",
+          "currency": "USD"
+        },
+        "conversion_date": {
+          "type": "date",
+          "format": "%Y-%m-%d"
+        }
+      }
+    },
+    "shopee": {
+      "field_mappings": {
+        "advertiser_name": "Campaign Name",
+        "campaign_name": "Ad Group Name",
+        "offer_name": "Product Name",
+        "conversion_amount": "Revenue",
+        "conversion_date": "Date",
+        "currency": "Currency",
+        "publisher_id": "Publisher ID",
+        "publisher_name": "Publisher Name"
+      },
+      "data_transformations": {
+        "conversion_amount": {
+          "type": "currency",
+          "currency": "USD"
+        },
+        "conversion_date": {
+          "type": "date",
+          "format": "%Y-%m-%d"
+        }
+      }
+    },
+    "tiktok_shop": {
+      "field_mappings": {
+        "advertiser_name": "Advertiser Name",
+        "campaign_name": "Campaign Name",
+        "offer_name": "Product Name",
+        "conversion_amount": "Revenue",
+        "conversion_date": "Date",
+        "currency": "Currency",
+        "publisher_id": "Publisher ID",
+        "publisher_name": "Publisher Name"
+      },
+      "data_transformations": {
+        "conversion_amount": {
+          "type": "currency",
+          "currency": "USD"
+        },
+        "conversion_date": {
+          "type": "date",
+          "format": "%Y-%m-%d"
+        }
+      }
+    },
+    "access_trade": {
+      "field_mappings": {
+        "Advertiser": "Campaign ID",
+        "Conversion ID": "Campaign Name",
+        "Datetime Conversion": "Status",
+        "Local Sale Amount": "Total Price",
+        "Local Reward": "Reward",
+        "Status": "Customer Type",
+        "Publisher Sub ID 1": "aff_sub",
+        "Publisher Sub ID 2": "aff_sub2",
+        "Publisher Sub ID 3": "aff_sub3",
+        "Customer Type": "Customer Type",
+        "Category ID": "Category ID",
+        "Product ID": "Product ID"
+      },
+      "data_transformations": {
+        "Local Sale Amount": {
+          "type": "currency",
+          "currency": "USD"
+        },
+        "Local Reward": {
+          "type": "currency",
+          "currency": "USD"
+        },
+        "Datetime Conversion": {
+          "type": "date",
+          "format": "%Y-%m-%d %H:%M:%S"
+        }
+      }
+    },
+    "linkshare": {
+      "field_mappings": {
+        "advertiser_name": "Shop name",
+        "campaign_name": "Content Type",
+        "offer_name": "Product Name",
+        "conversion_amount": "Actual standard commission",
+        "conversion_date": "Time order created",
+        "currency": "Currency",
+        "publisher_id": "Creator username",
+        "publisher_name": "Creator username"
+      },
+      "data_transformations": {
+        "conversion_amount": {
+          "type": "currency",
+          "currency": "USD"
+        },
+        "conversion_date": {
+          "type": "date",
+          "format": "%Y-%m-%d %H:%M:%S"
+        }
+      }
+    }
+  },
+  "standard_fields": [
+    "platform",
+    "advertiser_name",
+    "campaign_name",
+    "offer_name",
+    "conversion_amount",
+    "conversion_date",
+    "currency",
+    "publisher_id",
+    "publisher_name",
+    "source_file",
+    "processed_date"
+  ],
+  "access_trade": {
+    "field_mappings": {
+      "Datetime Conversion": "Conversion Time"
+    },
+    "data_transformations": {
+      "Datetime Conversion": {
+        "type": "date",
+        "format": "%Y-%m-%d %H:%M:%S"
+      }
+    }
+  }
+}
