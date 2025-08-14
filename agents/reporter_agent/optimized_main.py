@@ -125,7 +125,7 @@ class OptimizedReporterAgent:
                                 days_ago: Optional[int] = None,
                                 send_email: bool = True,
                                 upload_feishu: bool = True,
-                                self_email: bool = False,
+                                self_email: bool = True,
                                 limit: Optional[int] = None):
         """命令行模式生成報表 - 優化版本"""
         try:
@@ -479,7 +479,7 @@ async def main():
                 days_ago=args.days_ago,
                 send_email=not args.no_email,
                 upload_feishu=not args.no_feishu,
-                self_email=args.self_email,
+                self_email=True,  # 默认启用 self-email
                 limit=args.limit
             )
         

@@ -80,17 +80,15 @@ class DMPQueryAgent:
     def get_mockup_multiplier(self, partner_name: str) -> tuple:
         """獲取partner的mockup乘數"""
         try:
-            from config import PARTNER_SOURCES_MAPPING
+            from config import get_partner_mockup_multiplier
             
-            partner_config = PARTNER_SOURCES_MAPPING.get(partner_name, {})
+            # 獲取Partner特定的mockup倍數（從config.py統一配置）
+            mockup_multiplier = get_partner_mockup_multiplier(partner_name)
             
-            # 檢查是否有特殊配置
-            if partner_name == "ByteC":
-                return True, 1.0  # ByteC使用原始數據
-            elif partner_name in ["DeepLeaper", "RAMPUP", "MKK", "MP"]:
-                return True, 0.9  # 其他partner使用90%的mockup
-            else:
-                return False, 1.0  # 默認不使用mockup
+            # 如果倍數不是1.0，說明需要應用mockup
+            should_apply = mockup_multiplier != 1.0
+            
+            return should_apply, mockup_multiplier
         except ImportError:
             return False, 1.0
     

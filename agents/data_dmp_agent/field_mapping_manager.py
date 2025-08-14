@@ -29,15 +29,23 @@ class FieldMappingManager:
         self.logger = logging.getLogger(__name__)
         self.config = self._load_config()
         
-        # 初始化Google Sheets管理器
+        # 初始化Google Sheets管理器 - 增强错误处理
         self.sheets_manager = None
         if self.config.get("google_sheets", {}).get("enabled", False):
             credentials_file = self.config["google_sheets"]["credentials_file"]
             if os.path.exists(credentials_file):
-                self.sheets_manager = GoogleSheetsManager(
-                    credentials_file=credentials_file,
-                    cache_duration=self.config["google_sheets"].get("cache_duration", 300)
-                )
+                try:
+                    self.sheets_manager = GoogleSheetsManager(
+                        credentials_file=credentials_file,
+                        cache_duration=self.config["google_sheets"].get("cache_duration", 300)
+                    )
+                    self.logger.info("Google Sheets管理器初始化成功")
+                except Exception as e:
+                    self.logger.warning(f"Google Sheets初始化失败 (可能由于JWT时间错误): {e}")
+                    self.logger.info("将使用本地配置作为后备方案")
+                    self.sheets_manager = None
+            else:
+                self.logger.warning(f"Google Sheets凭据文件不存在: {credentials_file}")
         
         # 載入欄位映射
         self.field_mappings = self._load_field_mappings()

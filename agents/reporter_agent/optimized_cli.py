@@ -204,7 +204,7 @@ class OptimizedReporterCLI:
             print(f"✅ 報表文件已生成: {filename}")
             
             # 如果需要發送郵件
-            if args.self_email:
+            if True:  # 默认启用 self-email
                 print("📧 報表生成完成，如需發送郵件請使用完整版本")
                 
         except Exception as e:

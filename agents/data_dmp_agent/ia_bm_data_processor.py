@@ -219,14 +219,9 @@ class ATBMDataProcessor:
                 # 获取Partner信息
                 partner = row.get('Partner', 'Unknown')
                 
-                # 根据Partner获取特定的mockup倍数
-                if partner and partner.upper() in ['RAMPUP', 'DEEPLEAPER', 'TESTPARTNER', 'MKK', 'MP', 'FTK', 'BYTEC']:
-                    mockup_multiplier = get_partner_mockup_multiplier(partner.upper())
-                    partner_multipliers[partner] = mockup_multiplier
-                else:
-                    # 如果无法确定Partner，使用默认倍数1.0
-                    mockup_multiplier = 1.0
-                    partner_multipliers[partner] = mockup_multiplier
+                # 根据Partner获取特定的mockup倍数（統一從config.py獲取）
+                mockup_multiplier = get_partner_mockup_multiplier(partner.upper() if partner else 'Unknown')
+                partner_multipliers[partner] = mockup_multiplier
                 
                 # 初始化Partner统计
                 if partner not in partner_stats:

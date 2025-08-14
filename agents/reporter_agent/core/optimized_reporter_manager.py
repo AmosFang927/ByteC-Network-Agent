@@ -690,8 +690,17 @@ class OptimizedReporterManager:
                 conditions.append(f"c.datetime_conversion <= ${param_count}")
                 params.append(end_date)
             
-            # 添加狀態過濾條件 - 只包含 approved 和 pending
-            conditions.append("(c.conversion_status IN ('approved', 'pending') OR c.conversion_status IS NULL)")
+            # 添加狀態過濾條件 - 包含有效状态：processing, completed, approved, pending
+            # 排除无效状态：cancelled, invalid, rejected, failed
+            conditions.append("""(
+                c.conversion_status IS NULL OR 
+                LOWER(c.conversion_status) NOT LIKE '%cancelled%' AND
+                LOWER(c.conversion_status) NOT LIKE '%canceled%' AND  
+                LOWER(c.conversion_status) NOT LIKE '%invalid%' AND
+                LOWER(c.conversion_status) NOT LIKE '%rejected%' AND
+                LOWER(c.conversion_status) NOT LIKE '%failed%' AND
+                LOWER(c.conversion_status) NOT LIKE '%decline%'
+            )""")
             
             where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
             limit_clause = f" LIMIT {limit}" if limit else ""
@@ -874,14 +883,20 @@ class OptimizedReporterManager:
             # 處理金額 - 簡化邏輯
             original_sale_amount = float(conv.usd_sale_amount) if conv.usd_sale_amount else 0.0
             
-            # 簡化Partner檢查
-            is_bytec_partner = 'BYTEC' in partner_display.upper()
+            # 從config.py獲取Partner特定的mockup倍數
+            try:
+                import sys
+                import os
+                config_path = os.path.join(os.path.dirname(__file__), '../../../../')
+                if config_path not in sys.path:
+                    sys.path.append(config_path)
+                import config
+                mockup_multiplier = config.get_partner_mockup_multiplier(partner_display)
+            except:
+                mockup_multiplier = 1.0  # 默認不調整
             
-            # 應用倍數調整
-            if is_bytec_partner:
-                processed_sale_amount = original_sale_amount * 3.0  # ByteC倍數
-            else:
-                processed_sale_amount = original_sale_amount * 2.0  # 其他Partner倍數
+            # 應用配置的倍數調整
+            processed_sale_amount = original_sale_amount * mockup_multiplier
             
             return {
                 'Conversion ID': conv.conversion_id,

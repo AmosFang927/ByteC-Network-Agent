@@ -129,12 +129,25 @@ class SummaryFormatter:
             total_all_conversions = len(df)
             
             # 计算各状态的统计
-            # 无效状态：包含invalid, rejected, cancelled, failed等
+            # 根据用户需求更新状态分类：
+            # - Processing → Pending/Approved (有效状态)
+            # - Completed → Pending/Approved (有效状态)  
+            # - Cancelled → Invalid/Rejected (无效状态)
+            
+            # 无效状态：cancelled及其他拒绝状态
             invalid_keywords = ['invalid', 'rejected', 'cancelled', 'canceled', 'failed', 'decline']
             invalid_rejected_mask = df['Status'].str.lower().str.contains('|'.join(invalid_keywords), na=False)
             
-            # 有效状态：除了无效状态外的所有其他状态
-            pending_approved_mask = ~invalid_rejected_mask
+            # 有效状态：processing, completed, approved, pending等
+            # 为了确保包含所有新状态，使用更明确的逻辑
+            status_lower = df['Status'].str.lower()
+            processing_mask = status_lower.str.contains('processing', na=False)
+            completed_mask = status_lower.str.contains('completed', na=False)
+            approved_mask = status_lower.str.contains('approved', na=False)
+            pending_mask = status_lower.str.contains('pending', na=False)
+            
+            # 有效状态 = processing OR completed OR approved OR pending OR 其他非无效状态
+            pending_approved_mask = (processing_mask | completed_mask | approved_mask | pending_mask) | ~invalid_rejected_mask
             
             pending_approved_count = pending_approved_mask.sum()
             invalid_rejected_count = invalid_rejected_mask.sum()
@@ -224,10 +237,10 @@ class SummaryFormatter:
             f"Partner: {summary['partner_name']}",
             f"Date Range: {summary['date_range']}",
             f"Total Conversions (All Status): {summary['total_all_conversions']:,} 条",
-            f"✅ Total Conversions (Pending/Approved): {summary['pending_approved_count']:,} 条",
-            f"✅ Total Sale Amount (USD) (Pending/Approved): {summary['pending_approved_amount']}",
-            f"⚠️ Total Conversions (Invalid/Rejected): {summary['invalid_rejected_count']:,} 条",
-            f"⚠️ Total Sale Amount (USD) (Invalid/Rejected): {summary['invalid_rejected_amount']}",
+            f"✅ Total Conversions (Pending/Approved/Processing): {summary['pending_approved_count']:,} 条",
+            f"✅ Total Sale Amount (USD) (Pending/Approved/Completed): {summary['pending_approved_amount']}",
+            f"⚠️ Total Conversions (Invalid/Rejected/Cancelled): {summary['invalid_rejected_count']:,} 条",
+            f"⚠️ Total Sale Amount (USD) (Invalid/Rejected/Cancelled): {summary['invalid_rejected_amount']}",
             f"Sources: {summary['sources_list']}"
         ]
         

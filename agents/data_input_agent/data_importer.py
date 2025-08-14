@@ -326,7 +326,7 @@ class DataImporter:
                             logger_info(f"Partner '{partner}' 列 '{col}': ${original_total:,.2f} → ${adjusted_total:,.2f} (倍数: {mockup_multiplier})")
         else:
             # 如果没有Partner列，使用默认倍数
-            default_multiplier = getattr(config, 'MOCKUP_MULTIPLIER', 0.9)
+            default_multiplier = getattr(config, 'MOCKUP_MULTIPLIER', 1.0)  # 改為默認不調整
             logger_info(f"未找到Partner列，使用默认mockup倍数: {default_multiplier}")
             
             for col in amount_columns:

@@ -68,12 +68,12 @@
     },
     "access_trade": {
       "field_mappings": {
-        "Advertiser": "Campaign ID",
-        "Conversion ID": "Campaign Name",
-        "Datetime Conversion": "Status",
+        "Advertiser": "Campaign Name",
+        "Conversion ID": "Conversion ID",
+        "Datetime Conversion": "Conversion Time",
         "Local Sale Amount": "Total Price",
         "Local Reward": "Reward",
-        "Status": "Customer Type",
+        "Status": "Status",
         "Publisher Sub ID 1": "aff_sub",
         "Publisher Sub ID 2": "aff_sub2",
         "Publisher Sub ID 3": "aff_sub3",

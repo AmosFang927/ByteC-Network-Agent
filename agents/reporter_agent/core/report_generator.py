@@ -368,18 +368,18 @@ class ReportGenerator:
             ws.cell(row=current_row, column=1, value=f"Total Conversions (All Status): {unified_summary['total_all_conversions']:,}").font = info_font
             current_row += 1
             
-            # Total Conversions (Pending/Approved)
-            ws.cell(row=current_row, column=1, value=f"✅ Total Conversions (Pending/Approved): {unified_summary['pending_approved_count']:,}").font = success_font
+            # Total Conversions (Pending/Approved/Processing)
+            ws.cell(row=current_row, column=1, value=f"✅ Total Conversions (Pending/Approved/Processing): {unified_summary['pending_approved_count']:,}").font = success_font
             current_row += 1
             
-            # Total Sale Amount (USD) (Pending/Approved)
-            ws.cell(row=current_row, column=1, value=f"✅ Total Sale Amount (USD) (Pending/Approved): {unified_summary['pending_approved_amount']}").font = success_font
+            # Total Sale Amount (USD) (Pending/Approved/Completed)
+            ws.cell(row=current_row, column=1, value=f"✅ Total Sale Amount (USD) (Pending/Approved/Completed): {unified_summary['pending_approved_amount']}").font = success_font
             current_row += 1
             
-            # 總是顯示 Invalid/Rejected 記錄（即使值為0）
-            ws.cell(row=current_row, column=1, value=f"⚠️ Total Conversions (Invalid/Rejected): {unified_summary['invalid_rejected_count']:,}").font = warning_font
+            # 總是顯示 Invalid/Rejected/Cancelled 記錄（即使值為0）
+            ws.cell(row=current_row, column=1, value=f"⚠️ Total Conversions (Invalid/Rejected/Cancelled): {unified_summary['invalid_rejected_count']:,}").font = warning_font
             current_row += 1
-            ws.cell(row=current_row, column=1, value=f"⚠️ Total Sale Amount (USD) (Invalid/Rejected): {unified_summary['invalid_rejected_amount']}").font = warning_font
+            ws.cell(row=current_row, column=1, value=f"⚠️ Total Sale Amount (USD) (Invalid/Rejected/Cancelled): {unified_summary['invalid_rejected_amount']}").font = warning_font
             current_row += 1
             
             # 添加Sources信息

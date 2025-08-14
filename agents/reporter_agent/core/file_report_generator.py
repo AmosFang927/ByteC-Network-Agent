@@ -20,6 +20,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from dataclasses import dataclass
 from decimal import Decimal
+import decimal
 
 # 添加項目根目錄到路徑
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
@@ -49,7 +50,10 @@ class PartnerSummary:
     
     @property
     def amount_formatted(self) -> str:
-        return f"${self.total_amount:,.2f}"
+        try:
+            return f"${float(self.total_amount):,.2f}"
+        except (ValueError, TypeError):
+            return "$0.00"
     
     @property
     def sources_count(self) -> int:
@@ -112,7 +116,7 @@ class FileReportGenerator:
             # logger.info(f"📊 數據概況: {len(df):,} 行, {len(df.columns)} 列")
             
             # 1. 標準化數據格式並添加Partner分組
-            standardized_df = await self._standardize_and_classify_data(df)
+            standardized_df = await self._standardize_and_classify_data(df, import_file_path)
             
             # 2. 根據partner_name處理數據
             if partner_name.upper() == 'ALL':
@@ -135,7 +139,7 @@ class FileReportGenerator:
                 'excel_files': []
             }
     
-    async def _standardize_and_classify_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    async def _standardize_and_classify_data(self, df: pd.DataFrame, import_file_path: str = None) -> pd.DataFrame:
         """DMP Agent已經標準化數據，這裡只需要基本驗證"""
         try:
             # logger.info("🔄 驗證DMP Agent標準化數據...")
@@ -214,6 +218,12 @@ class FileReportGenerator:
             
             # 執行欄位重新命名
             df = df.rename(columns=column_mapping)
+            
+            # 🔧 确保Conversion ID保持为字符串格式，防止科学计数法
+            if 'Conversion ID' in df.columns:
+                df['Conversion ID'] = df['Conversion ID'].astype(str)
+                logger.debug("✅ 已确保Conversion ID为字符串格式")
+            
             logger.info(f"✅ 欄位標準化完成，更新後欄位: {list(df.columns)}")
             
             # 更新 amount_column 的引用
@@ -240,7 +250,9 @@ class FileReportGenerator:
                 if missing_dates > 0:
                     logger.warning(f"⚠️ 發現 {missing_dates} 個空的 Datetime Conversion，使用默認日期修復")
                     # 嘗試從文件名提取日期，或使用昨天日期
-                    default_date_str = self._extract_date_from_filename(import_file_path)
+                    default_date_str = None
+                    if import_file_path:
+                        default_date_str = self._extract_date_from_filename(import_file_path)
                     if default_date_str:
                         default_date = datetime.strptime(default_date_str, '%Y-%m-%d')
                     else:
@@ -248,11 +260,29 @@ class FileReportGenerator:
                     df['Datetime Conversion'] = df['Datetime Conversion'].fillna(default_date)
                     logger.info(f"✅ 已使用 {default_date.strftime('%Y-%m-%d')} 填充 {missing_dates} 個空的日期欄位")
             
-            # 確保數值類型正確
-            numeric_columns = [amount_column, 'USD Payout', 'Conversion ID', 'Offer ID']
+            # 確保數值類型正確 - 增强错误处理
+            numeric_columns = ['USD Payout', 'Conversion ID', 'Offer ID']
+            if amount_column:
+                numeric_columns.append(amount_column)
             for col in numeric_columns:
                 if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                    try:
+                        # 检查列是否存在且包含有效数据
+                        if not df[col].empty:
+                            # 确保Series类型正确
+                            col_data = df[col]
+                            if not isinstance(col_data, pd.Series):
+                                logger.warning(f"⚠️ 列 {col} 数据类型异常: {type(col_data)}")
+                                col_data = pd.Series(col_data)
+                            
+                            # 安全地转换为数值类型
+                            df[col] = pd.to_numeric(col_data, errors='coerce').fillna(0)
+                        else:
+                            # 如果列为空，填充为0
+                            df[col] = 0
+                    except Exception as e:
+                        logger.warning(f"⚠️ 转换列 {col} 为数值类型失败: {e}, 跳过")
+                        continue
             
             # logger.info(f"✅ 數據驗證完成，包含列: {list(df.columns)}")
             # logger.info(f"📊 Partner分布: {df['Partner'].value_counts().to_dict()}")
@@ -459,7 +489,13 @@ class FileReportGenerator:
                         if col in partner_df.columns:
                             amount_col = col
                             break
-                    total_amount = Decimal(str(partner_df[amount_col].sum())) if amount_col else Decimal('0')
+                    try:
+                        amount_sum = partner_df[amount_col].sum() if amount_col else 0
+                        # 确保数值类型正确处理
+                        total_amount = Decimal(str(float(amount_sum))) if amount_col else Decimal('0')
+                    except (ValueError, TypeError, decimal.InvalidOperation) as e:
+                        logger.warning(f"⚠️ {partner_name} 金额转换失败: {e}, 使用0")
+                        total_amount = Decimal('0')
                     sources = partner_df['Source'].unique().tolist() if 'Source' in partner_df.columns else []
                     sources = [s for s in sources if pd.notna(s) and s != '']
                     
@@ -485,8 +521,9 @@ class FileReportGenerator:
                         excluded_statuses=[]
                     )
             
-            # 計算有效轉化（pending/approved）
-            valid_statuses = ['pending', 'approved', 'approved_pending']
+            # 計算有效轉化（pending/approved/processing/completed）
+            # 兼容LinkShare數據格式
+            valid_statuses = ['pending', 'approved', 'approved_pending', 'processing', 'completed']
             valid_mask = partner_df['Status'].str.lower().isin(valid_statuses)
             valid_df = partner_df[valid_mask]
             
@@ -500,20 +537,93 @@ class FileReportGenerator:
                     break
             
             if amount_column:
-                total_amount = Decimal(str(valid_df[amount_column].sum()))
+                try:
+                    # 确保数值类型正确处理，避免Series类型问题
+                    if valid_df.empty or amount_column not in valid_df.columns:
+                        total_amount = Decimal('0')
+                    else:
+                        # 直接获取Series并进行计算
+                        if isinstance(amount_column, list):
+                            # 如果有多個匹配的欄位，使用第一個
+                            amount_column = amount_column[0]
+                            logger.info(f"⚠️ 發現多個金額欄位，使用第一個: {amount_column}")
+                        
+                        amount_col_data = valid_df[amount_column]
+                        
+                        # 確保 amount_col_data 是 Series 類型
+                        if not isinstance(amount_col_data, pd.Series):
+                            logger.warning(f"⚠️ amount_col_data 不是 Series 類型: {type(amount_col_data)}")
+                            if isinstance(amount_col_data, pd.DataFrame):
+                                # 如果是 DataFrame，取第一列
+                                amount_col_data = amount_col_data.iloc[:, 0]
+                                logger.info("✅ 已從 DataFrame 取第一列轉換為 Series")
+                            else:
+                                amount_col_data = pd.Series(amount_col_data)
+                        
+                        # 确保是数值类型 - 增强错误处理
+                        try:
+                            # 首先检查数据类型和结构
+                            if amount_col_data.empty:
+                                amount_sum = 0
+                            else:
+                                # 确保是pandas Series且包含有效数据
+                                if not isinstance(amount_col_data, pd.Series):
+                                    logger.warning(f"⚠️ 数据类型异常，尝试转换: {type(amount_col_data)}")
+                                    amount_col_data = pd.Series(amount_col_data)
+                                
+                                # 安全地转换为数值类型
+                                amount_series = pd.to_numeric(amount_col_data, errors='coerce')
+                                amount_sum = amount_series.sum()
+                                
+                                # 確保 amount_sum 是標量值
+                                if hasattr(amount_sum, 'item'):
+                                    amount_sum = amount_sum.item()
+                                
+                                # 检查结果是否有效
+                                if pd.isna(amount_sum) or not isinstance(amount_sum, (int, float)):
+                                    logger.warning(f"⚠️ 金额计算结果异常: {amount_sum}, 使用0")
+                                    amount_sum = 0
+                        except Exception as e:
+                            logger.error(f"❌ 金额计算失败: {e}, 使用0")
+                            amount_sum = 0
+                        
+                        total_amount = Decimal(str(float(amount_sum)))
+                        logger.info(f"✅ {partner_name} 金额计算成功: {total_amount}")
+                except Exception as e:
+                    logger.warning(f"⚠️ {partner_name} 有效数据金额转换失败: {e}, 使用0")
+                    logger.error(f"   详细错误: {type(e).__name__}: {str(e)}")
+                    import traceback
+                    logger.error(f"   堆栈跟踪: {traceback.format_exc()}")
+                    total_amount = Decimal('0')
             else:
                 logger.warning(f"⚠️ 未找到金額欄位，可用欄位: {list(partner_df.columns)}")
                 total_amount = Decimal('0')
             
-            # 獲取該Partner的所有Sources
-            sources = partner_df['Source'].unique().tolist()
-            sources = [s for s in sources if pd.notna(s) and s != '']
+            # 獲取該Partner的所有Sources - 增强错误处理
+            try:
+                if 'Source' in partner_df.columns and not partner_df['Source'].empty:
+                    sources = partner_df['Source'].unique().tolist()
+                    sources = [s for s in sources if pd.notna(s) and s != '']
+                else:
+                    sources = []
+            except Exception as e:
+                logger.warning(f"⚠️ {partner_name} Sources处理失败: {e}")
+                sources = []
             
-            # 計算排除的記錄（invalid/rejected）
-            invalid_statuses = ['invalid', 'rejected']
-            invalid_mask = partner_df['Status'].str.lower().isin(invalid_statuses)
-            excluded_records = invalid_mask.sum()
-            excluded_statuses = partner_df[invalid_mask]['Status'].tolist() if excluded_records > 0 else []
+            # 計算排除的記錄（invalid/rejected/cancelled）- 增强错误处理
+            try:
+                if 'Status' in partner_df.columns and not partner_df['Status'].empty:
+                    invalid_statuses = ['invalid', 'rejected', 'cancelled']
+                    invalid_mask = partner_df['Status'].str.lower().isin(invalid_statuses)
+                    excluded_records = int(invalid_mask.sum())
+                    excluded_statuses = partner_df[invalid_mask]['Status'].tolist() if excluded_records > 0 else []
+                else:
+                    excluded_records = 0
+                    excluded_statuses = []
+            except Exception as e:
+                logger.warning(f"⚠️ {partner_name} 排除记录计算失败: {e}")
+                excluded_records = 0
+                excluded_statuses = []
             
             return PartnerSummary(
                 partner_name=partner_name,
@@ -634,6 +744,9 @@ class FileReportGenerator:
             
         except Exception as e:
             logger.error(f"❌ 生成 {partner_summary.partner_name} Excel文件失敗: {e}")
+            logger.error(f"   详细错误: {type(e).__name__}: {str(e)}")
+            import traceback
+            logger.error(f"   堆栈跟踪: {traceback.format_exc()}")
             return None
     
     def _clean_sheet_name(self, name: str) -> str:
@@ -684,24 +797,63 @@ class FileReportGenerator:
         current_row += 1
         
         if 'Status' in df.columns:
-            # 有效轉化統計
-            valid_mask = df['Status'].str.lower().isin(['pending', 'approved', 'approved_pending'])
+            # 🔧 修复：使用与邮件统计一致的状态分类逻辑（主工作表）
+            # 无效状态：cancelled及其他拒绝状态
+            invalid_keywords = ['invalid', 'rejected', 'cancelled', 'canceled', 'failed', 'decline']
+            invalid_mask = df['Status'].str.lower().str.contains('|'.join(invalid_keywords), na=False)
+            
+            # 有效状态：processing, completed, approved, pending 等（除了无效状态外的所有状态）
+            valid_mask = ~invalid_mask
+            
             valid_count = valid_mask.sum()
             valid_amount = df[valid_mask]['USD Sale Amount'].sum()
             
-            ws.cell(row=current_row, column=1, value=f"✅ Total Conversions (Pending/Approved): {valid_count:,}").font = success_font
+            # 確保計數和金額都是標量值，不是 Series
+            if hasattr(valid_count, 'item'):
+                try:
+                    valid_count = valid_count.item()
+                except ValueError:
+                    # 如果是多維數組，取第一個值
+                    valid_count = int(valid_count.iloc[0] if hasattr(valid_count, 'iloc') else valid_count)
+                    
+            if hasattr(valid_amount, 'item'):
+                try:
+                    valid_amount = valid_amount.item()
+                except ValueError:
+                    # 如果是多維數組，取第一個值或求和
+                    if hasattr(valid_amount, 'sum'):
+                        valid_amount = float(valid_amount.sum())
+                    else:
+                        valid_amount = float(valid_amount.iloc[0] if hasattr(valid_amount, 'iloc') else valid_amount)
+            
+            ws.cell(row=current_row, column=1, value=f"✅ Total Conversions (Pending/Approved/Processing): {valid_count:,}").font = success_font
             current_row += 1
-            ws.cell(row=current_row, column=1, value=f"✅ Total Sale Amount (USD) (Pending/Approved): ${valid_amount:,.2f}").font = success_font
+            ws.cell(row=current_row, column=1, value=f"✅ Total Sale Amount (USD) (Pending/Approved/Completed): ${valid_amount:,.2f}").font = success_font
             current_row += 1
             
             # 無效轉化統計 - 總是顯示，即使為0
-            invalid_mask = df['Status'].str.lower().isin(['invalid', 'rejected'])
             invalid_count = invalid_mask.sum()
             invalid_amount = df[invalid_mask]['USD Sale Amount'].sum() if invalid_count > 0 else 0.0
             
-            ws.cell(row=current_row, column=1, value=f"⚠️ Total Conversions (Invalid/Rejected): {invalid_count:,}").font = Font(size=10, color="FF0000") # 紅色
+            # 確保無效統計也是標量值
+            if hasattr(invalid_count, 'item'):
+                try:
+                    invalid_count = invalid_count.item()
+                except ValueError:
+                    invalid_count = int(invalid_count.iloc[0] if hasattr(invalid_count, 'iloc') else invalid_count)
+                    
+            if hasattr(invalid_amount, 'item'):
+                try:
+                    invalid_amount = invalid_amount.item()
+                except ValueError:
+                    if hasattr(invalid_amount, 'sum'):
+                        invalid_amount = float(invalid_amount.sum())
+                    else:
+                        invalid_amount = float(invalid_amount.iloc[0] if hasattr(invalid_amount, 'iloc') else invalid_amount)
+            
+            ws.cell(row=current_row, column=1, value=f"⚠️ Total Conversions (Invalid/Rejected/Cancelled): {invalid_count:,}").font = Font(size=10, color="FF0000") # 紅色
             current_row += 1
-            ws.cell(row=current_row, column=1, value=f"⚠️ Total Sale Amount (USD) (Invalid/Rejected): ${invalid_amount:,.2f}").font = Font(size=10, color="FF0000") # 紅色
+            ws.cell(row=current_row, column=1, value=f"⚠️ Total Sale Amount (USD) (Invalid/Rejected/Cancelled): ${invalid_amount:,.2f}").font = Font(size=10, color="FF0000") # 紅色
             current_row += 1
         
         # Sources信息 - 顯示所有 Sources，與郵件格式一致
@@ -752,26 +904,65 @@ class FileReportGenerator:
         current_row += 1
         
         if 'Status' in df.columns:
-            # 有效轉化統計
-            valid_mask = df['Status'].str.lower().isin(['pending', 'approved', 'approved_pending'])
+            # 🔧 修复：使用与邮件统计一致的状态分类逻辑
+            # 无效状态：cancelled及其他拒绝状态
+            invalid_keywords = ['invalid', 'rejected', 'cancelled', 'canceled', 'failed', 'decline']
+            invalid_mask = df['Status'].str.lower().str.contains('|'.join(invalid_keywords), na=False)
+            
+            # 有效状态：processing, completed, approved, pending 等（除了无效状态外的所有状态）
+            valid_mask = ~invalid_mask
+            
             valid_count = valid_mask.sum()
             valid_amount = df[valid_mask]['USD Sale Amount'].sum()
             
-            ws.cell(row=current_row, column=1, value=f"✅ Total Conversions (Pending/Approved): {valid_count:,}").font = success_font
+            # 確保計數和金額都是標量值，不是 Series
+            if hasattr(valid_count, 'item'):
+                try:
+                    valid_count = valid_count.item()
+                except ValueError:
+                    # 如果是多維數組，取第一個值
+                    valid_count = int(valid_count.iloc[0] if hasattr(valid_count, 'iloc') else valid_count)
+                    
+            if hasattr(valid_amount, 'item'):
+                try:
+                    valid_amount = valid_amount.item()
+                except ValueError:
+                    # 如果是多維數組，取第一個值或求和
+                    if hasattr(valid_amount, 'sum'):
+                        valid_amount = float(valid_amount.sum())
+                    else:
+                        valid_amount = float(valid_amount.iloc[0] if hasattr(valid_amount, 'iloc') else valid_amount)
+            
+            ws.cell(row=current_row, column=1, value=f"✅ Total Conversions (Pending/Approved/Processing): {valid_count:,}").font = success_font
             current_row += 1
-            ws.cell(row=current_row, column=1, value=f"✅ Total Sale Amount (USD) (Pending/Approved): ${valid_amount:,.2f}").font = success_font
+            ws.cell(row=current_row, column=1, value=f"✅ Total Sale Amount (USD) (Pending/Approved/Completed): ${valid_amount:,.2f}").font = success_font
             current_row += 1
             
             # 無效轉化統計 - 總是顯示，即使為0，使用紅色字體
-            invalid_mask = df['Status'].str.lower().isin(['invalid', 'rejected'])
             invalid_count = invalid_mask.sum()
             invalid_amount = df[invalid_mask]['USD Sale Amount'].sum() if invalid_count > 0 else 0.0
             
+            # 確保無效統計也是標量值
+            if hasattr(invalid_count, 'item'):
+                try:
+                    invalid_count = invalid_count.item()
+                except ValueError:
+                    invalid_count = int(invalid_count.iloc[0] if hasattr(invalid_count, 'iloc') else invalid_count)
+                    
+            if hasattr(invalid_amount, 'item'):
+                try:
+                    invalid_amount = invalid_amount.item()
+                except ValueError:
+                    if hasattr(invalid_amount, 'sum'):
+                        invalid_amount = float(invalid_amount.sum())
+                    else:
+                        invalid_amount = float(invalid_amount.iloc[0] if hasattr(invalid_amount, 'iloc') else invalid_amount)
+            
             # 使用紅色字體顯示無效轉化統計
             invalid_font = Font(size=10, color="FF0000")  # 紅色
-            ws.cell(row=current_row, column=1, value=f"⚠️ Total Conversions (Invalid/Rejected): {invalid_count:,}").font = invalid_font
+            ws.cell(row=current_row, column=1, value=f"⚠️ Total Conversions (Invalid/Rejected/Cancelled): {invalid_count:,}").font = invalid_font
             current_row += 1
-            ws.cell(row=current_row, column=1, value=f"⚠️ Total Sale Amount (USD) (Invalid/Rejected): ${invalid_amount:,.2f}").font = invalid_font
+            ws.cell(row=current_row, column=1, value=f"⚠️ Total Sale Amount (USD) (Invalid/Rejected/Cancelled): ${invalid_amount:,.2f}").font = invalid_font
             current_row += 1
         
         current_row += 1  # 空一行
@@ -793,12 +984,36 @@ class FileReportGenerator:
         data_start_row = start_row + 1
         for row_idx, (_, row) in enumerate(df.iterrows(), data_start_row):
             for col_idx, value in enumerate(row, 1):
+                # 确保value是标量值，避免Series格式化错误
+                if hasattr(value, 'item'):  # 检查是否是numpy/pandas标量
+                    value = value.item()
+                elif pd.isna(value):  # 处理NaN值
+                    value = ""
+                # 特殊处理ID字段，确保以字符串形式写入
+                header_name = headers[col_idx-1]
+                if any(id_field in header_name for id_field in ['ID', 'Id', 'id', 'Conversion ID', 'Order ID', 'Offer ID']):
+                    # 强制转换为字符串，避免科学计数法
+                    if pd.notna(value):
+                        value = str(value).replace('.0', '')  # 移除不必要的.0后缀
+                        # 如果是科学计数法，转换为完整数字
+                        if 'e+' in str(value).lower() or 'e-' in str(value).lower():
+                            try:
+                                value = f"{float(value):.0f}"
+                            except ValueError:
+                                value = str(value)
+                    else:
+                        value = ""
+                
                 cell = ws.cell(row=row_idx, column=col_idx, value=value)
                 
                 # 設置格式
-                if isinstance(value, (int, float)):
+                # ID字段应该格式化为文本，防止科学记数法
+                if any(id_field in header_name for id_field in ['ID', 'Id', 'id', 'Conversion ID', 'Order ID', 'Offer ID']):
+                    cell.number_format = '@'  # 文本格式
+                    cell.alignment = data_alignment
+                elif isinstance(value, (int, float)):
                     cell.alignment = number_alignment
-                    if 'USD' in headers[col_idx-1]:
+                    if 'USD' in header_name:
                         cell.number_format = '"$"#,##0.00'
                 else:
                     cell.alignment = data_alignment
@@ -994,29 +1209,54 @@ class FileReportGenerator:
             
             # 為每個Partner獲取mockup配置
             for partner_name in partners_list:
-                if partner_name.upper() in ['RAMPUP', 'DEEPLEAPER', 'TESTPARTNER', 'MKK', 'MP', 'FTK', 'BYTEC']:
-                    mockup_multiplier = get_partner_mockup_multiplier(partner_name.upper())
-                    partner_mockup_info[partner_name] = mockup_multiplier
-                else:
-                    # 使用默認倍數
-                    mockup_multiplier = getattr(config, 'MOCKUP_MULTIPLIER', 0.9)
-                    partner_mockup_info[partner_name] = mockup_multiplier
+                # 統一從config.py獲取Partner特定的mockup倍數
+                mockup_multiplier = get_partner_mockup_multiplier(partner_name.upper() if partner_name else 'Unknown')
+                partner_mockup_info[partner_name] = mockup_multiplier
             
-            # 如果只有一個Partner，使用其mockup倍數；否則使用默認倍數
+            # 如果只有一個Partner，使用其mockup倍數；否則計算平均倍數
             if len(partners_list) == 1:
                 mockup_multiplier = partner_mockup_info[partners_list[0]]
             else:
-                mockup_multiplier = getattr(config, 'MOCKUP_MULTIPLIER', 0.9)
+                # 計算所有Partner的平均倍數
+                mockup_multiplier = sum(partner_mockup_info.values()) / len(partner_mockup_info) if partner_mockup_info else 1.0
             
-            # 3. 計算當前數據統計
+            # 3. 計算當前數據統計 - 使用與郵件統計一致的狀態分類邏輯
             total_conversions = len(df)
-            pending_approved_df = df[df['Status'].isin(['Pending', 'Approved'])]
-            invalid_rejected_df = df[df['Status'].isin(['Invalid', 'Rejected'])]
+            
+            # 🔧 修复：使用与邮件统计一致的状态分类逻辑
+            # 无效状态：cancelled及其他拒绝状态
+            invalid_keywords = ['invalid', 'rejected', 'cancelled', 'canceled', 'failed', 'decline']
+            invalid_rejected_mask = df['Status'].str.lower().str.contains('|'.join(invalid_keywords), na=False)
+            
+            # 有效状态：processing, completed, approved, pending 等（除了无效状态外的所有状态）
+            pending_approved_mask = ~invalid_rejected_mask
+            
+            pending_approved_df = df[pending_approved_mask]
+            invalid_rejected_df = df[invalid_rejected_mask]
             
             total_pending_approved = len(pending_approved_df)
             total_invalid_rejected = len(invalid_rejected_df)
             total_amount_pending_approved = pending_approved_df['USD Sale Amount'].sum()
             total_amount_invalid_rejected = invalid_rejected_df['USD Sale Amount'].sum()
+            
+            # 確保金額是標量值，不是 Series
+            if hasattr(total_amount_pending_approved, 'item'):
+                try:
+                    total_amount_pending_approved = total_amount_pending_approved.item()
+                except ValueError:
+                    if hasattr(total_amount_pending_approved, 'sum'):
+                        total_amount_pending_approved = float(total_amount_pending_approved.sum())
+                    else:
+                        total_amount_pending_approved = float(total_amount_pending_approved.iloc[0] if hasattr(total_amount_pending_approved, 'iloc') else total_amount_pending_approved)
+                        
+            if hasattr(total_amount_invalid_rejected, 'item'):
+                try:
+                    total_amount_invalid_rejected = total_amount_invalid_rejected.item()
+                except ValueError:
+                    if hasattr(total_amount_invalid_rejected, 'sum'):
+                        total_amount_invalid_rejected = float(total_amount_invalid_rejected.sum())
+                    else:
+                        total_amount_invalid_rejected = float(total_amount_invalid_rejected.iloc[0] if hasattr(total_amount_invalid_rejected, 'iloc') else total_amount_invalid_rejected)
             
             # 4. 輸出格式化報告
             print_step(f"Partner: {', '.join(partners_list)}", "")
@@ -1037,15 +1277,15 @@ class FileReportGenerator:
             print_step("", "")
             
             print_step(f"Total Conversions (All Status): {total_conversions:,}", "")
-            print_step(f"✅ Total Conversions (Pending/Approved): {total_pending_approved:,}", "")
-            print_step(f"✅ Total Sale Amount (USD) (Pending/Approved): ${total_amount_pending_approved:,.2f}", "")
+            print_step(f"✅ Total Conversions (Pending/Approved/Processing): {total_pending_approved:,}", "")
+            print_step(f"✅ Total Sale Amount (USD) (Pending/Approved/Completed): ${total_amount_pending_approved:,.2f}", "")
             
             if total_invalid_rejected > 0:
-                print_step(f"⚠️ Total Conversions (Invalid/Rejected): {total_invalid_rejected:,}", "")
-                print_step(f"⚠️ Total Sale Amount (USD) (Invalid/Rejected): ${total_amount_invalid_rejected:,.2f}", "")
+                print_step(f"⚠️ Total Conversions (Invalid/Rejected/Cancelled): {total_invalid_rejected:,}", "")
+                print_step(f"⚠️ Total Sale Amount (USD) (Invalid/Rejected/Cancelled): ${total_amount_invalid_rejected:,.2f}", "")
             else:
-                print_step(f"⚠️ Total Conversions (Invalid/Rejected): 0", "")
-                print_step(f"⚠️ Total Sale Amount (USD) (Invalid/Rejected): $0.00", "")
+                print_step(f"⚠️ Total Conversions (Invalid/Rejected/Cancelled): 0", "")
+                print_step(f"⚠️ Total Sale Amount (USD) (Invalid/Rejected/Cancelled): $0.00", "")
             
             print_step("=" * 80, "")
             
@@ -1055,9 +1295,20 @@ class FileReportGenerator:
         except Exception as e:
             logger.error(f"❌ 生成重點總結失敗: {e}")
     
-    async def _print_partner_mockup_summary(self, partner_mockup_info: Dict[str, float], original_stats: Optional[Dict[str, Any]], current_amount: float):
+    async def _print_partner_mockup_summary(self, partner_mockup_info: Dict[str, float], original_stats: Optional[Dict[str, Any]], current_amount):
         """打印Partner mockup前後情況總結"""
         try:
+            # 確保 current_amount 是標量值
+            if hasattr(current_amount, 'item'):
+                try:
+                    current_amount = current_amount.item()
+                except ValueError:
+                    if hasattr(current_amount, 'sum'):
+                        current_amount = float(current_amount.sum())
+                    else:
+                        current_amount = float(current_amount.iloc[0] if hasattr(current_amount, 'iloc') else current_amount)
+            current_amount = float(current_amount)
+            
             print_step("", "")
             print_step("📊 Partner Mockup 前後情況總結", "SUMMARY")
             print_step("=" * 80, "")

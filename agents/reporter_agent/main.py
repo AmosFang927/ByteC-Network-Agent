@@ -46,27 +46,41 @@ logger = logging.getLogger(__name__)
 sys.stdout.flush()
 
 def find_latest_dmp_output():
-    """自動查找最新的 DMP Agent 輸出文件"""
+    """自動查找最新的 DMP Agent 輸出文件 - 修复版本"""
     import glob
     import os
     
-    # 🎯 優先查找 DMP_temp_*.xlsx 文件（包含 mockup 調整後的數據）
+    # 🔍 收集所有候选文件
+    all_candidate_files = []
+    
+    # 查找 DMP_temp_*.xlsx 文件（可能包含 mockup 調整後的數據）
     dmp_temp_files = glob.glob('output/DMP_temp_*.xlsx')
-    if dmp_temp_files:
-        latest_file = max(dmp_temp_files, key=os.path.getmtime)
-        logger.info(f"🔍 自動找到最新的 DMP 輸出文件 (含 mockup): {latest_file}")
-        return latest_file
+    all_candidate_files.extend(dmp_temp_files)
     
-    # 備用：查找 Passthrough_*.xlsx 文件（原始數據，無 mockup）
+    # 查找 Passthrough_*.xlsx 文件（已经包含 mockup 調整后的数据！）
     passthrough_files = glob.glob('output/Passthrough_*.xlsx')
-    if passthrough_files:
-        # 按修改時間排序，返回最新的文件
-        latest_file = max(passthrough_files, key=os.path.getmtime)
-        logger.warning(f"⚠️ 使用 Passthrough 文件（可能無 mockup 調整）: {latest_file}")
-        return latest_file
+    all_candidate_files.extend(passthrough_files)
     
-    logger.warning("⚠️ 未找到任何 DMP Agent 輸出文件")
-    return None
+    if not all_candidate_files:
+        logger.warning("⚠️ 未找到任何 DMP Agent 輸出文件")
+        return None
+    
+    # 🎯 按修改时间排序，选择最新的文件（无论类型）
+    latest_file = max(all_candidate_files, key=os.path.getmtime)
+    
+    # 记录选择的文件类型和时间
+    import time
+    mtime = os.path.getmtime(latest_file)
+    mtime_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
+    
+    if 'Passthrough_' in latest_file:
+        logger.info(f"🔍 自動找到最新的 Passthrough 文件 (含 mockup 調整): {latest_file}")
+        logger.info(f"📅 文件修改时间: {mtime_str}")
+    else:
+        logger.info(f"🔍 自動找到最新的 DMP_temp 文件: {latest_file}")
+        logger.info(f"📅 文件修改时间: {mtime_str}")
+    
+    return latest_file
 
 # 导入模块 - 使用絕對導入避免相對導入錯誤
 try:
@@ -116,7 +130,7 @@ async def generate_report_cli(partner_name: str = "ALL",
                             days_ago: Optional[int] = None,
                             send_email: bool = True,
                             upload_feishu: bool = True,
-                            self_email: bool = False,
+                            self_email: bool = True,
                             limit: Optional[int] = None,
                             enable_monitoring: bool = True,
                             import_file: Optional[str] = None):
@@ -502,7 +516,7 @@ def main():
     
     # 命令行生成模式
     generate_parser = subparsers.add_parser('generate', help='生成报表')
-    generate_parser.add_argument('--partner', default='ALL', help='Partner名称')
+    generate_parser.add_argument('--partner', default='ALL', help='Partner名称 (支持逗号分隔多个partners，例如: DeepLeaper,RAMPUP 或 ALL)')
     generate_parser.add_argument('--start-date', help='开始日期 (YYYY-MM-DD)')
     generate_parser.add_argument('--end-date', help='结束日期 (YYYY-MM-DD)')
     generate_parser.add_argument('--days-ago', type=int, help='过去N天的数据')
@@ -518,7 +532,7 @@ def main():
     
     # 性能測試模式
     perf_parser = subparsers.add_parser('performance', help='性能基準測試')
-    perf_parser.add_argument('--partner', default='ALL', help='Partner名称')
+    perf_parser.add_argument('--partner', default='ALL', help='Partner名称 (支持逗号分隔多个partners，例如: DeepLeaper,RAMPUP 或 ALL)')
     perf_parser.add_argument('--records', type=int, default=1000, help='測試記錄數量')
     
     args = parser.parse_args()
@@ -528,6 +542,12 @@ def main():
         run_api_server(args.host, args.port)
         
     elif args.command == 'generate':
+        # 处理多partners参数
+        partner_list = []
+        if args.partner and args.partner.upper() != "ALL":
+            partner_list = [p.strip() for p in args.partner.split(',') if p.strip()]
+            logger.info(f"🎯 处理多个Partners: {', '.join(partner_list)}")
+        
         # 命令行生成模式
         asyncio.run(generate_report_cli(
             partner_name=args.partner,
@@ -536,7 +556,7 @@ def main():
             days_ago=args.days_ago,
             send_email=not args.no_email,
             upload_feishu=not args.no_feishu,
-            self_email=args.self_email,
+            self_email=True,  # 默认启用 self-email
             limit=args.limit,
             enable_monitoring=not args.no_monitoring,
             import_file=args.import_file
@@ -547,6 +567,12 @@ def main():
         asyncio.run(test_database())
         
     elif args.command == 'performance':
+        # 处理多partners参数
+        partner_list = []
+        if args.partner and args.partner.upper() != "ALL":
+            partner_list = [p.strip() for p in args.partner.split(',') if p.strip()]
+            logger.info(f"🎯 性能测试多个Partners: {', '.join(partner_list)}")
+        
         # 性能基準測試
         asyncio.run(performance_benchmark(args.partner, args.records))
         

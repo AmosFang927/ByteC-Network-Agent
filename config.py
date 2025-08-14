@@ -134,7 +134,7 @@ PARTNER_SOURCES_MAPPING = {
     },
     "ByteC": {
         "sources": ["ALL"],  # ByteC 处理所有数据，不限制 Sources
-        "pattern": r".*",  # 匹配所有 Sources
+        "pattern": r"^ByteC$",  # 匹配所有 Sources
         "email_enabled": True,  # 邮件发送开关
         "email_recipients": ["AmosFang927@gmail.com"],  # ByteC Loop邮箱（请修改为实际的 ByteC Loop 邮箱）
         "special_report": True,  # 标记为特殊报表格式
@@ -162,7 +162,7 @@ EXCEL_SHEET_NAME = "Conversion Report"
 GENERATE_ALLPARTNERS_REPORT = False  # 是否生成AllPartners总汇总Excel文件（默认关闭）
 
 # 数据处理配置
-MOCKUP_MULTIPLIER = 0.9  # sale_amount调整倍数（默认90%）
+MOCKUP_MULTIPLIER = 1.0  # 默認不調整（Partner特定調整請使用get_partner_mockup_multiplier函數）
 REMOVE_COLUMNS = [
     "payout", 
     "base_payout", 
@@ -182,8 +182,12 @@ DMP_PASSTHROUGH_REMOVE_COLUMNS = [
     "USD Payout",
     "USD Reward", 
     "original_usd_sale_amount",
-    "Local Reward"
-    # 注意：不移除 "Local Sale Amount" 因为Reporter Agent需要它来转换为USD Sale Amount
+    "Local Reward",
+    "Local Sale Amount",  # 不需要在最终输出中显示
+    "Order ID",  # 不需要在最终输出中显示
+    "conversion_id",  # Reporter Agent 報表中不需要呈現 conversion_id 欄位（重复）
+    "usd_payout",  # Reporter Agent 報表中不需要呈現 usd_payout 欄位
+    "usd_sale_amount"  # 移除重复的小写字段，保留 "USD Sale Amount"
 ]  # DMP Agent passthrough模式下要移除的栏位
 
 # =============================================================================
@@ -1033,7 +1037,7 @@ INPUT_DATA_OUTPUT_DIR = "output"
 # 输入数据处理配置
 INPUT_DATA_ENABLE_PANDASAI_ANALYSIS = True  # 是否启用pandasai分析
 INPUT_DATA_ENABLE_MOCKUP = False  # 是否启用mockup处理（禁用以避免與DMP Agent重複處理）
-INPUT_DATA_MOCKUP_MULTIPLIER = 0.9  # mockup倍数
+INPUT_DATA_MOCKUP_MULTIPLIER = 1.0  # 默認不調整（Partner特定調整請使用get_partner_mockup_multiplier函數）
 
 # Input Data Agent 默认参数配置
 INPUT_DATA_AGENT_DEFAULT_PASSTHROUGH = True      # 默认启用passthrough模式
@@ -1057,10 +1061,9 @@ INPUT_DATA_OUTPUT_TEMPLATE = "Processed_{original_filename}_{timestamp}.xlsx"
 
 # 標準報告欄位列表（Reporter Agent使用）
 STANDARD_REPORT_COLUMNS = [
-    'Conversion ID',
     'Datetime Conversion',
     'USD Sale Amount',
-    'Advertiser',  # 添加缺失的 Advertiser 欄位
+    'Advertiser',  # 添加Advertiser字段
     'Publisher Sub ID 1',
     'Publisher Sub ID 2', 
     'Publisher Sub ID 3',
@@ -1078,10 +1081,9 @@ STANDARD_REPORT_COLUMNS = [
 
 # DMP Agent 輸出標準化列名映射
 DMP_OUTPUT_COLUMN_MAPPING = {
-    'conversion_id': 'Conversion ID',
     'conversion_date': 'Datetime Conversion',
     'usd_sale_amount': 'USD Sale Amount',
-    'advertiser': 'Advertiser',  # 添加 Advertiser 欄位映射
+    'advertiser': 'Advertiser',  # 添加Advertiser字段映射
     'aff_sub1': 'Publisher Sub ID 1',
     'aff_sub2': 'Publisher Sub ID 2',
     'aff_sub3': 'Publisher Sub ID 3', 
@@ -1096,13 +1098,13 @@ DMP_OUTPUT_COLUMN_MAPPING = {
 }
 
 # Reporter Agent 數值欄位配置
-NUMERIC_COLUMNS = ['Conversion ID', 'USD Sale Amount']
+NUMERIC_COLUMNS = ['USD Sale Amount']
 
 # Reporter Agent 預設值配置
 COLUMN_DEFAULT_VALUES = {
-    'Conversion ID': 0,
     'USD Sale Amount': 0.0,
     'Status': 'Pending',
+    'Advertiser': '',  # 添加Advertiser字段默认值
     # Publisher Sub ID 1~5, Advertiser Sub ID 1~5 預設為空字符串
     'Publisher Sub ID 1': '',
     'Publisher Sub ID 2': '',

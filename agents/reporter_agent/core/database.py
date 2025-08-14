@@ -785,8 +785,17 @@ class PostbackDatabase:
                     base_query += f" AND c.datetime_conversion <= ${param_count}::timestamp"
                     params.append(end_datetime)
                 
-                # 添加狀態過濾條件 - 只包含 approved 和 pending
-                base_query += " AND (c.conversion_status IN ('approved', 'pending') OR c.conversion_status IS NULL)"
+                # 添加狀態過濾條件 - 包含有效状态：processing, completed, approved, pending
+                # 排除无效状态：cancelled, invalid, rejected, failed
+                base_query += """ AND (
+                    c.conversion_status IS NULL OR 
+                    LOWER(c.conversion_status) NOT LIKE '%cancelled%' AND
+                    LOWER(c.conversion_status) NOT LIKE '%canceled%' AND  
+                    LOWER(c.conversion_status) NOT LIKE '%invalid%' AND
+                    LOWER(c.conversion_status) NOT LIKE '%rejected%' AND
+                    LOWER(c.conversion_status) NOT LIKE '%failed%' AND
+                    LOWER(c.conversion_status) NOT LIKE '%decline%'
+                )"""
                 
                 # 添加分組和排序
                 base_query += " GROUP BY partner_name ORDER BY total_records DESC"

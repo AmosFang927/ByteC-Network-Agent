@@ -314,17 +314,17 @@ class DMPAgent:
                 logger.debug(f"映射: {original_col} -> {unified_col}")
         
         # 添加缺失的必需統一字段（使用默認值）
-        # 这是最小化的核心字段集，基于Google Sheets中的unified fields
+        # 这是最小化的核心字段集，基于Google Sheets中的unified fields，已移除 Local Sale Amount 和 Order ID
         required_unified_fields = [
-            'Conversion ID', 'Partner', 'Platform', 'Order ID', 'Status',
-            'USD Sale Amount', 'Local Sale Amount', 'Local Reward', 'Datetime Conversion',
+            'Conversion ID', 'Partner', 'Platform', 'Status',
+            'USD Sale Amount', 'Datetime Conversion',
             'Advertiser', 'Campaign Name'
         ]
         
         for field in required_unified_fields:
             if field not in unified_df.columns:
                 # 根據字段類型設置默認值
-                if field in ['USD Sale Amount', 'Local Sale Amount', 'Local Reward']:
+                if field in ['USD Sale Amount']:
                     unified_df[field] = 0.0
                 elif field in ['Conversion ID']:
                     unified_df[field] = df.get('conversion_id', 'N/A')
@@ -340,9 +340,9 @@ class DMPAgent:
         try:
             from .currency_converter import currency_converter
             
-            # USD Sale Amount <- Local Sale Amount IDR轉USD
-            if 'Local Sale Amount' in unified_df.columns:
-                unified_df['USD Sale Amount'] = unified_df['Local Sale Amount'].apply(
+            # USD Sale Amount <- sale_amount IDR轉USD (Local Sale Amount 已从输出中移除)
+            if 'sale_amount' in unified_df.columns:
+                unified_df['USD Sale Amount'] = unified_df['sale_amount'].apply(
                     lambda x: currency_converter.convert_idr_to_usd(float(x)) if pd.notna(x) and x != '' else 0.0
                 )
                 logger.debug("添加USD Sale Amount字段")
@@ -376,7 +376,32 @@ class DMPAgent:
         # 如果沒有指定平台，從檔案名檢測
         if not platform:
             platform = self.detect_platform_from_filename(Path(file_path).name)
-            logger.info(f"🔍 檢測到平台: {platform}")
+            logger.info(f"🔍 從檔案名檢測到平台: {platform}")
+            
+            # 如果檔案名檢測失敗，嘗試從內容檢測
+            if platform == 'UNKNOWN':
+                logger.info("🔄 檔案名檢測失敗，嘗試從內容檢測平台...")
+                # 先讀取文件以進行內容檢測
+                import pandas as pd
+                file_extension = Path(file_path).suffix.lower()
+                if file_extension in ['.xlsx', '.xls']:
+                    df = pd.read_excel(file_path)
+                elif file_extension == '.csv':
+                    encodings = ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252', 'gbk']
+                    df = None
+                    for encoding in encodings:
+                        try:
+                            df = pd.read_csv(file_path, encoding=encoding)
+                            break
+                        except (UnicodeDecodeError, UnicodeError):
+                            continue
+                    if df is None:
+                        raise ValueError("無法讀取CSV檔案，嘗試了多種編碼格式都失敗")
+                else:
+                    raise ValueError(f"不支援的檔案格式: {file_extension}")
+                
+                platform = self.detect_platform_from_content(df)
+                logger.info(f"🔍 從內容檢測到平台: {platform}")
         
         result = {
             'file_path': file_path,
@@ -440,46 +465,35 @@ class DMPAgent:
                     return result
             
             # 如果不是特定平台處理器，則使用通用處理邏輯
-            # 讀取檔案
+            # 讀取檔案（如果還沒有讀取過）
             import pandas as pd
             
-            file_extension = Path(file_path).suffix.lower()
-            if file_extension in ['.xlsx', '.xls']:
-                df = pd.read_excel(file_path)
-            elif file_extension == '.csv':
-                # 嘗試不同編碼
-                encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'gbk']
-                df = None
-                for encoding in encodings:
-                    try:
-                        df = pd.read_csv(file_path, encoding=encoding)
-                        logger.info(f"成功使用 {encoding} 編碼讀取CSV檔案")
-                        break
-                    except (UnicodeDecodeError, UnicodeError):
-                        continue
+            # 檢查是否已經在平台檢測時讀取了文件
+            if 'df' not in locals():
+                file_extension = Path(file_path).suffix.lower()
+                if file_extension in ['.xlsx', '.xls']:
+                    df = pd.read_excel(file_path)
+                elif file_extension == '.csv':
+                    # 嘗試不同編碼
+                    encodings = ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252', 'gbk']
+                    df = None
+                    for encoding in encodings:
+                        try:
+                            df = pd.read_csv(file_path, encoding=encoding)
+                            logger.info(f"成功使用 {encoding} 編碼讀取CSV檔案")
+                            break
+                        except (UnicodeDecodeError, UnicodeError):
+                            continue
+                    
+                    if df is None:
+                        raise ValueError("無法讀取CSV檔案，嘗試了多種編碼格式都失敗")
+                    
+                    # 🔧 特殊修正：檢查並修正CSV列數不匹配導致的數據錯位問題
+                    df = self._fix_csv_column_mismatch(df, file_path)
+                else:
+                    raise ValueError(f"不支援的檔案格式: {file_extension}")
                 
-                if df is None:
-                    raise ValueError("無法讀取CSV檔案，嘗試了多種編碼格式都失敗")
-                
-                # 🔧 特殊修正：檢查並修正CSV列數不匹配導致的數據錯位問題
-                df = self._fix_csv_column_mismatch(df, file_path)
-            else:
-                raise ValueError(f"不支援的檔案格式: {file_extension}")
-            
-            logger.info(f"📊 成功讀取數據，共 {len(df)} 行，{len(df.columns)} 列")
-            
-            # 如果沒有指定平台，先從檔案名檢測，再從內容檢測
-            if not platform:
-                platform = self.detect_platform_from_filename(Path(file_path).name)
-                if platform == 'UNKNOWN':
-                    # 嘗試從內容檢測平台
-                    content_platform = self.detect_platform_from_content(df)
-                    if content_platform != 'UNKNOWN':
-                        platform = content_platform
-                        logger.info(f"🔍 從檔案內容檢測到平台: {platform}")
-                    else:
-                        logger.warning(f"⚠️ 無法從檔案名或內容檢測平台，使用原始格式")
-                        logger.info(f"📋 檔案欄位: {list(df.columns)}")
+                logger.info(f"📊 成功讀取數據，共 {len(df)} 行，{len(df.columns)} 列")
             
             # 如果指定了強制平台，覆蓋檢測結果
             if hasattr(self, 'force_platform') and self.force_platform:
@@ -528,7 +542,7 @@ class DMPAgent:
                         logger.info(f"📁 設置AT_BM處理結果文件: {self._current_at_bm_output_file}")
                         
                         # 讀取處理後的數據
-                        processed_df = pd.read_csv(at_bm_result['output_file'])
+                        processed_df = pd.read_csv(at_bm_result['output_file'], encoding='utf-8-sig')
                         
                         # 應用mockup處理
                         processed_data = await self._apply_mockup_processing(
@@ -644,14 +658,17 @@ class DMPAgent:
         """將 AT_BM 格式轉換為 IA_BM 格式（使用動態匯率）"""
         logger.info("🔄 開始 AT_BM 到 IA_BM 格式轉換...")
         
-        # 欄位映射
+        # 欄位映射 - 基于实际AT_BM数据结构（Campaign ID包含Shopee NON KOL）
         column_mapping = {
-            'Campaign Name': 'Advertiser',
-            'Conversion Time': 'Conversion Date',
-            'Product ID': 'Order ID',
-            'Total Price': 'Local Sale Amount',
-            'aff_sub': 'Publisher Sub ID 1',
-            'Category ID': 'Advertiser Sub ID 3'
+            'Campaign Name': 'Advertiser',  # Campaign Name(Shopee ID NON KOL) -> Advertiser 
+            'Conversion ID': 'Conversion ID',  # Conversion ID -> Conversion ID (保持不变)
+            'Conversion Time': 'Datetime Conversion',  # 修正时间字段名
+            'Product ID': 'Product ID',  # Product ID保持不变
+            'Total Price': 'Local Sale Amount',  # Total Price -> Local Sale Amount
+            'aff_sub': 'Publisher Sub ID 1',    # aff_sub(OEM信息) -> Publisher Sub ID 1
+            'Category ID': 'Category ID',  # Category ID保持不变
+            'Customer Type': 'Customer Type',  # Customer Type保持不变
+            'Status': 'Status'  # Status保持不变
         }
         
         # 重命名欄位
@@ -859,7 +876,7 @@ class DMPAgent:
             logger.info("🔄 開始生成Reporter Agent格式的DMP temp文件...")
             
             # 讀取AT_BM處理器的輸出
-            df = pd.read_csv(at_bm_processed_file)
+            df = pd.read_csv(at_bm_processed_file, encoding='utf-8-sig')
             logger.info(f"📊 讀取AT_BM文件: {len(df)} 行, {len(df.columns)} 列")
             
             # 添加Reporter Agent期望的關鍵字段
@@ -1043,7 +1060,7 @@ class DMPAgent:
             
             # 讀取LS_BM處理後的數據
             if ls_bm_processed_file.endswith('.csv'):
-                processed_df = pd.read_csv(ls_bm_processed_file)
+                processed_df = pd.read_csv(ls_bm_processed_file, encoding='utf-8-sig')
             else:
                 processed_df = pd.read_excel(ls_bm_processed_file)
             
@@ -1066,6 +1083,11 @@ class DMPAgent:
             logger.info(f"💾 已備份原始Passthrough文件到: {backup_path}")
             
             # 將LS_BM處理後的數據寫入Passthrough文件
+            # 確保Conversion ID保持為字符串格式以保持精度
+            if 'Conversion ID' in processed_df.columns:
+                processed_df['Conversion ID'] = processed_df['Conversion ID'].astype(str)
+                logger.info("✅ 已確保Conversion ID保持為字符串格式")
+            
             with pd.ExcelWriter(passthrough_file, engine='openpyxl') as writer:
                 processed_df.to_excel(writer, sheet_name='Data', index=False)
             
@@ -1259,7 +1281,7 @@ class DMPAgent:
                     if at_bm_processed_file and os.path.exists(at_bm_processed_file):
                         # ✅ 直接使用AT_BM處理器的統一字段格式結果並轉換為Reporter Agent期望格式
                         logger.info("🎯 使用AT_BM處理器結果並轉換為Reporter Agent格式...")
-                        df = pd.read_csv(at_bm_processed_file)
+                        df = pd.read_csv(at_bm_processed_file, encoding='utf-8-sig')
                         
                         # 🔧 轉換為Reporter Agent期望的字段格式
                         logger.info("🔄 轉換為Reporter Agent期望的字段格式...")
@@ -2536,10 +2558,22 @@ class DMPAgent:
         # 解析日期參數
         start_date, end_date, days_ago = self.parse_date_arguments(args)
         
-        # 過濾掉 "ALL" 參數
-        partner_filter = args.partner
-        if partner_filter and partner_filter.upper() == "ALL":
-            partner_filter = None
+        # 處理多partners參數
+        partner_filter = None
+        partner_list = []
+        if args.partner:
+            if args.partner.upper() == "ALL":
+                partner_filter = None
+                logger.info("🎯 處理所有Partners (ALL)")
+            else:
+                # 解析逗號分隔的partners
+                partner_list = [p.strip() for p in args.partner.split(',') if p.strip()]
+                if len(partner_list) == 1:
+                    partner_filter = partner_list[0]
+                    logger.info(f"🎯 處理單個Partner: {partner_filter}")
+                else:
+                    partner_filter = args.partner  # 保持原始字符串格式
+                    logger.info(f"🎯 處理多個Partners: {', '.join(partner_list)}")
         
         logger.info(f"   日期範圍: {start_date.strftime('%Y-%m-%d')} 至 {end_date.strftime('%Y-%m-%d')}")
         logger.info(f"   Partner過濾: {partner_filter or 'ALL'}")
@@ -2651,6 +2685,7 @@ async def main():
   python agents/data_dmp_agent/main.py --query --days-ago 2 --partner ALL
   python agents/data_dmp_agent/main.py --query --start-date 2025-07-17 --end-date 2025-07-17
   python agents/data_dmp_agent/main.py --query --days-ago 1 --partner DeepLeaper
+  python agents/data_dmp_agent/main.py --query --days-ago 1 --partner DeepLeaper,RAMPUP
   
   # 數據刪除模式 (危險操作)
   python agents/data_dmp_agent/main.py --delete --start-date 2025-07-17 --end-date 2025-07-17
@@ -2684,7 +2719,7 @@ async def main():
     parser.add_argument('--platform', type=str, default='IAByteC',
                        help='API平台名稱 (默認: IAByteC)')
     parser.add_argument('--partner', type=str,
-                       help='指定partner名稱 (例如: DeepLeaper, RAMPUP, ALL)')
+                       help='指定partner名稱 (支持逗号分隔多个partners，例如: DeepLeaper,RAMPUP 或 ALL)')
     
     # 功能參數
     parser.add_argument('--test-connection', action='store_true',
@@ -2805,8 +2840,8 @@ async def main():
                 agent.force_platform = args.force_platform
                 logger.info(f"🔧 強制指定平台: {args.force_platform}")
             
-            # 處理檔案
-            result = await agent.process_multiple_files(file_paths, args.passthrough)
+            # 處理檔案 - 默认启用 passthrough
+            result = await agent.process_multiple_files(file_paths, True)
             
             # 打印結果
             success_count = sum(1 for r in result['individual_results'] if r['success'])
@@ -2816,8 +2851,7 @@ async def main():
             if result['merged_filename']:
                 logger.info(f"📁 合併檔案: {result['merged_filename']}")
             
-            if args.passthrough:
-                logger.info("🔄 Passthrough模式: 數據不會插入Cloud SQL")
+            logger.info("🔄 Passthrough模式: 數據不會插入Cloud SQL")
             
             return
         
@@ -2852,16 +2886,15 @@ async def main():
         logger.info(f"   - 数据源: {args.data_source}")
         
         # 🔄 Phase 2: 顯示新功能參數狀態
-        if args.passthrough:
-            logger.info("🔄 Passthrough模式: 啟用 - 數據不會插入Cloud SQL")
+        logger.info("🔄 Passthrough模式: 啟用 - 數據不會插入Cloud SQL")
         
         if args.self_email:
             logger.info("📧 Self-email模式: 啟用 - 參數已從Data Input Agent傳遞")
         
         logger.info("=" * 60)
         
-        # 處理平台數據
-        result = await agent.process_platform_data(args.platform, args.days_ago, args.passthrough, args.data_source, args.start_date, args.end_date)
+        # 處理平台數據 - 默认启用 passthrough
+        result = await agent.process_platform_data(args.platform, args.days_ago, True, args.data_source, args.start_date, args.end_date)
         
         # 打印結果
         if result['success']:

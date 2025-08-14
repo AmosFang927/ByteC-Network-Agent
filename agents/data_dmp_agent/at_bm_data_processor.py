@@ -158,6 +158,89 @@ class ATBMDataProcessor:
             )
             return empty_mapped_df, {"error": str(e)}
     
+    def _read_at_bm_csv_correctly(self, file_path):
+        """
+        正確讀取AT_BM CSV文件的方法
+        解決pandas列錯位問題
+        """
+        import csv
+        
+        try:
+            self.logger.info(f"🔧 手動解析CSV文件: {file_path}")
+            
+            # 使用csv模組手動解析
+            all_data = []
+            headers = None
+            
+            with open(file_path, 'r', encoding='utf-8-sig') as f:
+                csv_reader = csv.reader(f)
+                headers = next(csv_reader)  # 讀取標題行
+                
+                self.logger.info(f"📋 找到 {len(headers)} 列")
+                
+                # 找到關鍵列的索引
+                try:
+                    unit_price_idx = headers.index('Unit Price')
+                    quantity_idx = headers.index('Quantity')
+                    total_price_idx = headers.index('Total Price')
+                    site_idx = headers.index('Site')
+                    
+                    self.logger.info(f"✅ 關鍵列索引 - Site:{site_idx}, Unit Price:{unit_price_idx}, Quantity:{quantity_idx}, Total Price:{total_price_idx}")
+                    
+                except ValueError as e:
+                    self.logger.error(f"❌ 找不到必要的列: {e}")
+                    return None
+                
+                # 讀取所有數據行
+                for row_num, row in enumerate(csv_reader, 1):
+                    if len(row) > max(unit_price_idx, quantity_idx, total_price_idx, site_idx):
+                        try:
+                            row_data = {}
+                            for i, header in enumerate(headers):
+                                if i < len(row):
+                                    row_data[header] = row[i]
+                                else:
+                                    row_data[header] = ''
+                            all_data.append(row_data)
+                            
+                        except Exception as e:
+                            if row_num <= 5:  # 只記錄前5行的錯誤
+                                self.logger.warning(f"⚠️ 第{row_num}行解析失敗: {e}")
+                            continue
+            
+            # 轉換為DataFrame
+            df = pd.DataFrame(all_data)
+            
+            # 確保數值列是正確的類型
+            numeric_columns = ['Unit Price', 'Quantity', 'Total Price']
+            for col in numeric_columns:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # 驗證第一行
+            if len(df) > 0:
+                first_row = df.iloc[0]
+                site = first_row['Site']
+                up = first_row['Unit Price']
+                qty = first_row['Quantity']
+                tp = first_row['Total Price']
+                
+                self.logger.info(f"📊 第一行驗證: Site={site}, Unit Price={up}, Quantity={qty}, Total Price={tp}")
+                self.logger.info(f"📊 驗證: {up} × {qty} = {up * qty}, 相等: {tp == up * qty}")
+                
+                # 計算總和驗證
+                total_price_sum = df['Total Price'].sum()
+                self.logger.info(f"✅ Total Price總和: {total_price_sum:,.0f} IDR")
+                
+                return df
+            else:
+                self.logger.error("❌ 沒有讀取到數據")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"❌ 手動CSV解析失敗: {e}")
+            return None
+
     def clean_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         执行数据清理
@@ -224,7 +307,18 @@ class ATBMDataProcessor:
             # 2. 读取文件
             self.logger.info("📖 读取文件...")
             if file_path.suffix.lower() == '.csv':
-                df = pd.read_csv(file_path, encoding='utf-8')
+                # 🔧 使用手動CSV解析確保正確讀取AT_BM數據
+                try:
+                    self.logger.info("🔧 使用手動CSV解析方法讀取AT_BM文件...")
+                    df = self._read_at_bm_csv_correctly(file_path)
+                    if df is None:
+                        raise ValueError("手動CSV解析失敗")
+                    self.logger.info(f"✅ 成功讀取 {len(df)} 行，{len(df.columns)} 列")
+                    
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 手動CSV解析失敗，回退到標準方法: {e}")
+                    df = pd.read_csv(file_path, encoding='utf-8-sig')
+                    
             elif file_path.suffix.lower() in ['.xlsx', '.xls']:
                 df = pd.read_excel(file_path)
             else:

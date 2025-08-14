@@ -128,7 +128,7 @@ class DataInputAgent:
     async def process_file(self, filename: str, passthrough: bool = False, 
                           analyze_only: bool = False, enable_dmp_forward: bool = False,
                           reporter_agent: bool = False, days_ago: int = 1,
-                          partner: str = None, self_email: bool = False,
+                          partner: str = None, partner_list: list = None, self_email: bool = False,
                           start_date: str = None, end_date: str = None) -> Dict[str, Any]:
         """处理单个文件"""
         self.logger.info(f"🔄 开始处理文件: {filename}")
@@ -171,12 +171,12 @@ class DataInputAgent:
                     self.logger.info("🔗 转发数据到DMP Agent (Passthrough模式: 不插入Cloud SQL，产生temp excel)...")
                 else:
                     self.logger.info("🔗 转发数据到DMP Agent (标准模式: 插入Cloud SQL)...")
-                dmp_result = await self._forward_to_dmp_agent(result['output_path'], filename, days_ago, partner, passthrough, self_email, start_date, end_date)
+                dmp_result = await self._forward_to_dmp_agent(result['output_path'], filename, days_ago, partner, partner_list, passthrough, self_email, start_date, end_date)
                 result['dmp_forward'] = dmp_result
             
             if reporter_agent and not analyze_only:
                 self.logger.info("📊 转发数据到Reporter Agent...")
-                reporter_result = await self._forward_to_reporter_agent(result, days_ago, partner, self_email, start_date, end_date)
+                reporter_result = await self._forward_to_reporter_agent(result, days_ago, partner, partner_list, self_email, start_date, end_date)
                 result['reporter_forward'] = reporter_result
             
             self.stats['files_processed'] += 1
@@ -233,7 +233,7 @@ class DataInputAgent:
         except:
             return 0
     
-    async def _forward_to_dmp_agent(self, output_path: str, filename: str, days_ago: int = 1, partner: str = None, passthrough: bool = False, self_email: bool = False, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
+    async def _forward_to_dmp_agent(self, output_path: str, filename: str, days_ago: int = 1, partner: str = None, partner_list: list = None, passthrough: bool = False, self_email: bool = False, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
         """转发数据到DMP Agent"""
         try:
             if not config.ENABLE_AGENT_INTER_CALLING:
@@ -371,7 +371,7 @@ class DataInputAgent:
             self.logger.warning(f"⚠️ 检测Partner失败: {e}")
             return 'IAByteC'  # 默认返回IAByteC
     
-    async def _forward_to_reporter_agent(self, process_result: Dict[str, Any], days_ago: int = 1, partner: str = None, self_email: bool = False, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
+    async def _forward_to_reporter_agent(self, process_result: Dict[str, Any], days_ago: int = 1, partner: str = None, partner_list: list = None, self_email: bool = False, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
         """转发数据到Reporter Agent"""
         try:
             if not config.ENABLE_REPORTER_AGENT_CALLING:
@@ -603,6 +603,9 @@ async def main():
   # 完整流水线：Input → DMP(Passthrough) → Reporter
   python agents/data_input_agent/main.py --import sample_data.xlsx --dmp-forward --reporter-agent --passthrough --days-ago 2 --partner ALL --self-email
   
+  # 多Partners处理：DeepLeaper和RAMPUP
+  python agents/data_input_agent/main.py --import sample_data.xlsx --dmp-forward --reporter-agent --passthrough --days-ago 2 --partner DeepLeaper,RAMPUP --self-email
+  
   # 批量处理多个文件
   python agents/data_input_agent/main.py --batch-import data1.xlsx,data2.xlsx --passthrough
   
@@ -638,7 +641,7 @@ async def main():
     parser.add_argument('--days-ago', type=int, default=1,
                        help='传递给DMP Agent和Reporter Agent的天数参数 (默认: 1)')
     parser.add_argument('--partner', type=str,
-                       help='传递给DMP Agent和Reporter Agent的partner参数')
+                       help='传递给DMP Agent和Reporter Agent的partner参数 (支持逗号分隔多个partners，例如: DeepLeaper,RAMPUP)')
     parser.add_argument('--self-email', action='store_true',
                        help='传递给Reporter Agent的自发邮件参数')
     parser.add_argument('--start-date', type=str,
@@ -680,14 +683,21 @@ async def main():
             agent.print_statistics()
             return
         
-        # 处理参数组合验证
+        # 处理多partners参数
+        partner_list = []
+        if args.partner:
+            partner_list = [p.strip() for p in args.partner.split(',') if p.strip()]
+            agent.logger.info(f"🎯 处理多个Partners: {', '.join(partner_list)}")
+        
+        # 处理参数组合验证 - 默认启用 dmp-forward 和 passthrough
         process_kwargs = {
-            'passthrough': args.passthrough,
+            'passthrough': True,  # 默认启用 passthrough
             'analyze_only': args.analyze_only,
-            'enable_dmp_forward': args.dmp_forward,
+            'enable_dmp_forward': True,  # 默认启用 dmp-forward
             'reporter_agent': args.reporter_agent,
             'days_ago': args.days_ago,
-            'partner': args.partner,
+            'partner': args.partner,  # 保持原始字符串格式传递给其他agent
+            'partner_list': partner_list,  # 添加解析后的partner列表
             'self_email': args.self_email,
             'start_date': args.start_date,
             'end_date': args.end_date

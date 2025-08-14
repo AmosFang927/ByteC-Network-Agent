@@ -117,6 +117,41 @@ class LSBMDataProcessor:
         self.logger.info(f"處理 {len(df)} 條 LS_BM 記錄")
         return df.copy()
     
+    def _extract_precise_order_id(self, df: pd.DataFrame) -> pd.Series:
+        """
+        从raw_data中提取精确的Order ID，避免JSON数值精度丢失
+        
+        Args:
+            df: 包含raw_data列的DataFrame
+            
+        Returns:
+            pd.Series: 精确的Order ID值
+        """
+        precise_order_ids = []
+        
+        for _, row in df.iterrows():
+            try:
+                if pd.notna(row.get('raw_data')):
+                    raw_data_str = str(row['raw_data'])
+                    
+                    # 使用正则表达式提取Order ID值，避免eval的安全问题
+                    import re
+                    order_id_match = re.search(r"'Order ID':\s*(\d+)", raw_data_str)
+                    if order_id_match:
+                        precise_order_id = order_id_match.group(1)
+                        precise_order_ids.append(precise_order_id)
+                        self.logger.debug(f"从raw_data提取精确Order ID: {precise_order_id}")
+                    else:
+                        # 如果正则匹配失败，回退到原始值
+                        precise_order_ids.append(str(int(row.get('Order ID', 0))))
+                else:
+                    precise_order_ids.append(str(int(row.get('Order ID', 0))))
+            except Exception as e:
+                self.logger.warning(f"提取精确Order ID失败: {e}，使用备用值")
+                precise_order_ids.append(str(int(row.get('Order ID', 0))))
+        
+        return pd.Series(precise_order_ids)
+
     def apply_field_mapping(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """
         应用字段映射，将原始字段映射到统一字段
@@ -175,8 +210,8 @@ class LSBMDataProcessor:
                 'adv_sub2': 'Attribution type',
                 'adv_sub3': 'IVA',
                 'adv_sub4': 'ISR',
-                'adv_sub5': 'Partner',
-                'raw_data': 'raw_data'
+                'adv_sub5': 'Partner'
+                # 移除raw_data映射，因為它不是unified field
             }
             
             # 創建映射後的 DataFrame
@@ -186,7 +221,21 @@ class LSBMDataProcessor:
             mapped_count = 0
             for unified_field, source_field in field_mappings.items():
                 if source_field in df.columns:
-                    mapped_df[unified_field] = df[source_field]
+                    # 特殊处理Conversion ID以保持精度
+                    if unified_field == 'Conversion ID' and 'raw_data' in df.columns:
+                        # 从raw_data中提取原始Order ID以保持精度
+                        precise_ids = self._extract_precise_order_id(df)
+                        # 確保為字符串類型以保持精度，避免科学计数法
+                        mapped_df[unified_field] = precise_ids.astype(str)
+                    elif unified_field == 'Conversion ID':
+                        # 如果没有raw_data，直接处理数值，确保不使用科学计数法
+                        if source_field in df.columns:
+                            # 转换为字符串避免科学计数法显示
+                            mapped_df[unified_field] = df[source_field].apply(
+                                lambda x: str(int(float(x))) if pd.notna(x) and str(x).replace('.', '').replace('-', '').isdigit() else str(x)
+                            )
+                    else:
+                        mapped_df[unified_field] = df[source_field]
                     mapped_count += 1
                 else:
                     mapped_df[unified_field] = None
@@ -237,12 +286,38 @@ class LSBMDataProcessor:
             else:
                 self.logger.warning("⚠️ 未找到sale_amount字段，跳过汇率转换")
             
-            # 簡化 raw_data（避免大量數據）
-            if len(df) > 0:
-                sample_data = df.head(1).to_dict(orient='records')
-                mapped_df['raw_data'] = str(sample_data)
-            else:
-                mapped_df['raw_data'] = '[]'
+            # 過濾掉不需要的內部處理字段，只保留Google Sheets標準unified fields
+            # 定義需要在最終輸出中保留的Google Sheets標準unified fields
+            unified_output_fields = [
+                # Google Sheets定義的核心統一字段 (標準格式) - 已移除 Local Sale Amount 和 Order ID
+                'Conversion ID', 'Datetime Conversion', 
+                'Status', 'Platform',
+                'Advertiser', 'Campaign Name',
+                'Publisher Sub ID 1', 'Publisher Sub ID 2', 'Publisher Sub ID 3',
+                'USD Sale Amount',  # 標準的USD金額字段
+                
+                # 必要的metadata字段
+                'Source', 'Partner'
+            ]
+            
+            # 從mapped_df中只保留unified_output_fields中的字段，移除所有內部處理字段
+            filtered_df = pd.DataFrame()
+            for field in unified_output_fields:
+                if field in mapped_df.columns:
+                    filtered_df[field] = mapped_df[field]
+            
+            # 確保不包含任何mockup相關的內部字段
+            internal_fields_to_remove = ['mockup_applied', 'mockup_multiplier', 'original_usd_sale_amount', 
+                                       'usd_sale_amount', 'local_sale_amount', 'sale_amount', 'payout']
+            for field in internal_fields_to_remove:
+                if field in filtered_df.columns:
+                    filtered_df = filtered_df.drop(columns=[field])
+                    self.logger.info(f"移除內部處理字段: {field}")
+            
+            # 將過濾後的DataFrame賦值回mapped_df
+            mapped_df = filtered_df
+            
+            self.logger.info(f"✅ 過濾後保留 {len(mapped_df.columns)} 個Google Sheets標準unified字段")
             
             mapping_info = {
                 'mapped_fields': [k for k, v in field_mappings.items() if v in df.columns],
@@ -319,14 +394,9 @@ class LSBMDataProcessor:
                 # 获取Partner信息
                 partner = row.get('Partner', 'Unknown')
                 
-                # 根据Partner获取特定的mockup倍数
-                if partner and partner.upper() in ['RAMPUP', 'DEEPLEAPER', 'TESTPARTNER', 'MKK', 'MP', 'FTK', 'BYTEC']:
-                    mockup_multiplier = get_partner_mockup_multiplier(partner.upper())
-                    partner_multipliers[partner] = mockup_multiplier
-                else:
-                    # 如果无法确定Partner，使用默认倍数1.0
-                    mockup_multiplier = 1.0
-                    partner_multipliers[partner] = mockup_multiplier
+                # 根据Partner获取特定的mockup倍数（統一從config.py獲取）
+                mockup_multiplier = get_partner_mockup_multiplier(partner.upper() if partner else 'Unknown')
+                partner_multipliers[partner] = mockup_multiplier
                 
                 # 初始化Partner统计
                 if partner not in partner_stats:
@@ -490,6 +560,28 @@ class LSBMDataProcessor:
             self.logger.info("💰 应用Mockup处理...")
             mockup_df = self.apply_mockup_processing(cleaned_df)
             self.stats['processed_records'] = len(mockup_df)
+            
+            # 🔧 最終清理：移除Mockup處理添加的内部字段，只保留Google Sheets標準字段
+            final_unified_fields = [
+                'Conversion ID', 'Datetime Conversion', 
+                'Status', 'Platform',
+                'Advertiser', 'Campaign Name',
+                'Publisher Sub ID 1', 'Publisher Sub ID 2', 'Publisher Sub ID 3',
+                'USD Sale Amount', 'Source', 'Partner'
+            ]
+            
+            final_df = pd.DataFrame()
+            for field in final_unified_fields:
+                if field in mockup_df.columns:
+                    final_df[field] = mockup_df[field]
+            
+            # 確保Conversion ID保持為字符串格式以保持精度
+            if 'Conversion ID' in final_df.columns:
+                final_df['Conversion ID'] = final_df['Conversion ID'].astype(str)
+                self.logger.info("✅ 最終確保Conversion ID保持為字符串格式")
+            
+            self.logger.info(f"✅ 最終過濾完成，保留 {len(final_df.columns)} 個Google Sheets標準字段")
+            mockup_df = final_df
             
             # 6. 验证输出格式
             validation_result = {
