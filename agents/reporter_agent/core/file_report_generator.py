@@ -205,6 +205,8 @@ class FileReportGenerator:
                 'Sale Amount (USD)': 'USD Sale Amount',
                 'sale_amount': 'USD Sale Amount',  # 🔧 添加sale_amount到USD Sale Amount的映射
                 'usd_sale_amount': 'USD Sale Amount',  # 🔧 添加usd_sale_amount到USD Sale Amount的映射
+                'Advertiser': 'Advertiser',  # 🔧 确保Advertiser字段保持不变
+                'Order ID': 'Order ID',  # 🔧 确保Order ID字段保持不变
                 'Publisher Sub ID 1': 'Aff Sub1',
                 'Publisher Sub ID 2': 'Aff Sub2', 
                 'Publisher Sub ID 3': 'Aff Sub3',

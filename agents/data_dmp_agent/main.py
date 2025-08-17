@@ -463,6 +463,63 @@ class DMPAgent:
                         'stats': processor_result.get('stats', {})
                     })
                     return result
+                    
+            elif platform == 'leads_adn':
+                logger.info("🎯 使用专门的LeadsADN数据处理器...")
+                
+                try:
+                    from .leads_adn_data_processor import LeadsADNDataProcessor
+                except ImportError:
+                    from agents.data_dmp_agent.leads_adn_data_processor import LeadsADNDataProcessor
+                    
+                # 读取数据
+                import pandas as pd
+                file_extension = Path(file_path).suffix.lower()
+                if file_extension in ['.xlsx', '.xls']:
+                    df = pd.read_excel(file_path)
+                elif file_extension == '.csv':
+                    # 尝试不同编码
+                    encodings = ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']
+                    df = None
+                    for encoding in encodings:
+                        try:
+                            df = pd.read_csv(file_path, encoding=encoding)
+                            logger.info(f"✅ 成功使用 {encoding} 编码读取LeadsADN文件")
+                            break
+                        except UnicodeDecodeError:
+                            continue
+                    if df is None:
+                        raise ValueError("无法读取CSV文件，尝试了多种编码")
+                else:
+                    raise ValueError(f"不支持的文件格式: {file_extension}")
+                
+                logger.info(f"📊 LeadsADN数据读取完成: {len(df)} 行, {len(df.columns)} 列")
+                
+                # 处理数据
+                processor = LeadsADNDataProcessor()
+                processed_df, processing_info = processor.process_data(df, file_path)
+                
+                # 生成输出文件
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                file_basename = Path(file_path).stem
+                output_filename = f"LeadsADN_{file_basename}_{timestamp}.xlsx"
+                output_path = Path("output") / output_filename
+                output_path.parent.mkdir(exist_ok=True)
+                
+                # 保存处理后的数据
+                processed_df.to_excel(output_path, index=False)
+                logger.info(f"✅ LeadsADN处理完成，输出文件: {output_path}")
+                
+                result.update({
+                    'success': True,
+                    'records_count': len(processed_df),
+                    'processed_data': str(output_path),
+                    'stats': processing_info,
+                    'mapping_info': processing_info.get('mapping_info', {})
+                })
+                # 保存LeadsADN输出文件路径
+                self._current_leads_adn_output_file = str(output_path)
+                return result
             
             # 如果不是特定平台處理器，則使用通用處理邏輯
             # 讀取檔案（如果還沒有讀取過）
@@ -602,6 +659,8 @@ class DMPAgent:
                         df = await self._convert_at_bm_to_ia_bm(df)
                     elif platform in ['IA_BM', 'IA_MB', 'IA_OT']:
                         logger.info(f"✅ {platform} 格式已經是標準格式，無需轉換")
+                    elif platform == 'leads_adn':
+                        logger.info(f"✅ {platform} 數據已由專門處理器處理，無需額外轉換")
                     else:
                         logger.warning(f"⚠️ 未知平台 {platform}，使用原始格式")
                         
@@ -612,6 +671,8 @@ class DMPAgent:
                     df = await self._convert_at_bm_to_ia_bm(df)
                 elif platform in ['IA_BM', 'IA_MB', 'IA_OT']:
                     logger.info(f"✅ {platform} 格式已經是標準格式，無需轉換")
+                elif platform == 'leads_adn':
+                    logger.info(f"✅ {platform} 數據已由專門處理器處理，無需額外轉換")
                 else:
                     logger.warning(f"⚠️ 未知平台 {platform}，使用原始格式")
             
@@ -849,6 +910,20 @@ class DMPAgent:
                     await self._update_passthrough_file_with_ls_bm_data(file_path, ls_bm_processed_file)
                 else:
                     logger.warning("⚠️ 未找到LS_BM處理結果文件，跳過Passthrough文件更新")
+                    
+            elif platform and 'leads_adn' in platform:
+                logger.info("🎯 LeadsADN Passthrough模式: 更新Passthrough文件並生成DMP temp文件...")
+                
+                # 查找最新的LeadsADN處理結果文件
+                leads_adn_processed_file = None
+                if hasattr(self, '_current_leads_adn_output_file') and self._current_leads_adn_output_file:
+                    leads_adn_processed_file = self._current_leads_adn_output_file
+                    logger.info(f"🔍 找到LeadsADN處理結果文件: {leads_adn_processed_file}")
+                
+                if leads_adn_processed_file and os.path.exists(leads_adn_processed_file):
+                    await self._update_passthrough_file_with_leads_adn_data(file_path, leads_adn_processed_file)
+                else:
+                    logger.warning("⚠️ 未找到LeadsADN處理結果文件，跳過Passthrough文件更新")
         
         return {
             'individual_results': results,
@@ -1096,6 +1171,70 @@ class DMPAgent:
             
         except Exception as e:
             logger.error(f"❌ 更新Passthrough文件失敗: {e}")
+            import traceback
+            logger.error(f"錯誤詳情: {traceback.format_exc()}")
+    
+    async def _update_passthrough_file_with_leads_adn_data(self, original_csv_path: str, leads_adn_processed_file: str):
+        """
+        使用LeadsADN處理後的數據更新對應的Passthrough文件
+        
+        Args:
+            original_csv_path: 原始CSV文件路徑
+            leads_adn_processed_file: LeadsADN處理結果文件路徑
+        """
+        try:
+            import pandas as pd
+            import glob
+            import os
+            from pathlib import Path
+            
+            logger.info(f"🔄 開始更新LeadsADN Passthrough文件...")
+            logger.info(f"📂 原始文件: {original_csv_path}")
+            logger.info(f"📂 處理結果文件: {leads_adn_processed_file}")
+            
+            # 構建Passthrough文件名模式
+            file_basename = Path(original_csv_path).stem
+            passthrough_pattern = f"output/Passthrough_{file_basename}_*.xlsx"
+            passthrough_files = glob.glob(passthrough_pattern)
+            
+            if not passthrough_files:
+                logger.warning(f"⚠️ 未找到對應的Passthrough文件: {passthrough_pattern}")
+                return
+            
+            # 使用最新的Passthrough文件
+            passthrough_file = max(passthrough_files, key=os.path.getctime)
+            logger.info(f"📄 找到Passthrough文件: {passthrough_file}")
+            
+            # 讀取LeadsADN處理後的數據
+            processed_df = pd.read_excel(leads_adn_processed_file)
+            logger.info(f"📊 讀取LeadsADN處理數據: {len(processed_df)} 行, {len(processed_df.columns)} 列")
+            
+            # 檢查必要字段
+            required_fields = ['Partner', 'USD Sale Amount', 'Advertiser', 'Status']
+            missing_fields = [field for field in required_fields if field not in processed_df.columns]
+            if missing_fields:
+                logger.warning(f"⚠️ LeadsADN數據缺少關鍵字段: {missing_fields}")
+            
+            # 備份原始Passthrough文件
+            backup_path = passthrough_file.replace('.xlsx', '_backup.xlsx')
+            import shutil
+            shutil.copy2(passthrough_file, backup_path)
+            logger.info(f"💾 已備份原始Passthrough文件到: {backup_path}")
+            
+            # 將LeadsADN處理後的數據寫入Passthrough文件
+            # 確保Conversion ID保持為字符串格式以保持精度
+            if 'Conversion ID' in processed_df.columns:
+                processed_df['Conversion ID'] = processed_df['Conversion ID'].astype(str)
+                logger.info("✅ 已確保Conversion ID保持為字符串格式")
+            
+            with pd.ExcelWriter(passthrough_file, engine='openpyxl') as writer:
+                processed_df.to_excel(writer, sheet_name='Data', index=False)
+            
+            logger.info(f"✅ 成功更新Passthrough文件，現在包含LeadsADN處理後的數據")
+            logger.info(f"🎯 Reporter Agent將讀取到正確的Partner和Source字段")
+            
+        except Exception as e:
+            logger.error(f"❌ 更新LeadsADN Passthrough文件失敗: {e}")
             import traceback
             logger.error(f"錯誤詳情: {traceback.format_exc()}")
     

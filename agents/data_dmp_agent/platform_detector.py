@@ -78,6 +78,19 @@ class PlatformDetector:
                     "Commission", "Time order created", "Platform"
                 ],
                 "keywords": ["linkshare", "order id", "creator username", "shop name"]
+            },
+            "leads_adn": {
+                "filename_patterns": [
+                    r"_leads_adn_", r"_LeadsADN_", r"leads_adn", r"LeadsADN",
+                    r"leadsamdn.*\.csv", r"leads_adn.*\.xlsx", r"LeadsADN.*\.csv",
+                    r"LEADSAMDN", r"leadsamdn", r"_LEADSAMDN_", r"_leadsamdn_"
+                ],
+                "column_patterns": [
+                    "Affiliate", "Campaign", "Conversion", "Revenue", "Transaction ID",
+                    "Click Time", "Conversion Time", "Status", "Merchant",
+                    "Product", "Commission", "Sale Amount", "Advertiser"
+                ],
+                "keywords": ["leads", "adn", "affiliate", "conversion", "revenue", "merchant", "commission"]
             }
         }
     

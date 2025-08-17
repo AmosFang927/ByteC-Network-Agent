@@ -90,13 +90,13 @@ PARTNER_SOURCES_MAPPING = {
         #"email_recipients": ["amosfang927@gmail.com"]  # 收件人列表
         "email_recipients": ["max@rampupads.com", "offer@rampupads.com", "bill.zhang@rampupads.com"],
         "show_invalid_warning": False,  # RAMPUP所有轉化status應該沒有invalid，所以summary不用呈現⚠️ Invalid Conversion
-        "mockup_multiplier": 0.7  # RAMPUP Partner 使用 70% 的 mockup 倍數
+        "mockup_multiplier": 0.9  # RAMPUP Partner 使用 90% 的 mockup 倍數
     },
     "FTK": {
         "sources": ["FTK"],  # FTK source
         "pattern": r"^FTK.*",  # 只要以FTK開頭一律歸為FTK（不再排除XIAOMI/VIVO/OPPO/OEM）
         "email_enabled": True,  # 邮件发送开关
-        "email_recipients": ["AmosFang927@gmail.com"],  # 收件人列表（请修改为实际的FTK邮箱）
+        "email_recipients": ["AmosFang927@gmail.com", "ningding@iflytek.com", "xlfeng6@iflytek.com", "cbg_xhbao3@iflytek.com", "jjzhu26@iflytek.com", "xmliu28@iflytek.com"],  # 收件人列表（包含FTK抄送收件人）
         "show_invalid_warning": True,  # FTK partner保持原有的invalid warning顯示邏輯
         "mockup_multiplier": 0.9  # FTK Partner 使用 90% 的 mockup 倍數
     },
@@ -106,7 +106,7 @@ PARTNER_SOURCES_MAPPING = {
         "email_enabled": True,  # 邮件发送开关
         "email_recipients": ["sunjiakuo@deepleaper.com", "deepleaper@gmail.com"],  # 收件人列表
         "show_invalid_warning": True,  # 其他partner保持原有的invalid warning顯示邏輯
-        "mockup_multiplier": 0.7  # DeepLeaper Partner 使用 70% 的 mockup 倍數
+        "mockup_multiplier": 0.9  # DeepLeaper Partner 使用 90% 的 mockup 倍數
     },
     "TestPartner": {
         "sources": ["TestPartner"],
@@ -184,10 +184,22 @@ DMP_PASSTHROUGH_REMOVE_COLUMNS = [
     "original_usd_sale_amount",
     "Local Reward",
     "Local Sale Amount",  # 不需要在最终输出中显示
-    "Order ID",  # 不需要在最终输出中显示
     "conversion_id",  # Reporter Agent 報表中不需要呈現 conversion_id 欄位（重复）
     "usd_payout",  # Reporter Agent 報表中不需要呈現 usd_payout 欄位
-    "usd_sale_amount"  # 移除重复的小写字段，保留 "USD Sale Amount"
+    "usd_sale_amount",  # 移除重复的小写字段，保留 "USD Sale Amount"
+    # LeadsADN等平台不需要呈现的字段
+    "Category ID",
+    "Product ID", 
+    "Customer Type",
+    "Campaign",
+    "Product Name",
+    "Click ID",
+    "IP Address",
+    "User Agent",
+    "Traffic Source",
+    "Event Value",
+    "Source File",
+    "Processed Date"
 ]  # DMP Agent passthrough模式下要移除的栏位
 
 # =============================================================================
@@ -1064,6 +1076,7 @@ STANDARD_REPORT_COLUMNS = [
     'Datetime Conversion',
     'USD Sale Amount',
     'Advertiser',  # 添加Advertiser字段
+    'Order ID',  # 添加Order ID字段
     'Publisher Sub ID 1',
     'Publisher Sub ID 2', 
     'Publisher Sub ID 3',
@@ -1084,6 +1097,7 @@ DMP_OUTPUT_COLUMN_MAPPING = {
     'conversion_date': 'Datetime Conversion',
     'usd_sale_amount': 'USD Sale Amount',
     'advertiser': 'Advertiser',  # 添加Advertiser字段映射
+    'order_id': 'Order ID',  # 添加Order ID字段映射
     'aff_sub1': 'Publisher Sub ID 1',
     'aff_sub2': 'Publisher Sub ID 2',
     'aff_sub3': 'Publisher Sub ID 3', 
@@ -1105,6 +1119,7 @@ COLUMN_DEFAULT_VALUES = {
     'USD Sale Amount': 0.0,
     'Status': 'Pending',
     'Advertiser': '',  # 添加Advertiser字段默认值
+    'Order ID': '',  # 添加Order ID字段默认值
     # Publisher Sub ID 1~5, Advertiser Sub ID 1~5 預設為空字符串
     'Publisher Sub ID 1': '',
     'Publisher Sub ID 2': '',

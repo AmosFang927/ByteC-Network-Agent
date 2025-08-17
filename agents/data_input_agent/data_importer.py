@@ -72,6 +72,8 @@ class DataImporter:
             return 'AT_BM'
         elif '_ia_bm' in filename_lower or 'involve_asia' in filename_lower:
             return 'IA_BM'
+        elif 'leads_adn' in filename_lower or 'leadsamdn' in filename_lower:
+            return 'leads_adn'
         else:
             return 'AT_BM'  # 默認
         
@@ -384,9 +386,22 @@ class DataImporter:
         # 清理数据中的Excel不兼容字符
         from utils.excel_character_cleaner import clean_for_excel
         df_cleaned = df.copy()
+        
+        # 处理日期时间列，移除时区信息
         for col in df_cleaned.columns:
             if df_cleaned[col].dtype == 'object':  # 只处理字符串列
                 df_cleaned[col] = df_cleaned[col].apply(lambda x: clean_for_excel(x) if x is not None else x)
+            elif 'datetime' in str(df_cleaned[col].dtype).lower():
+                # 移除时区信息，避免Excel保存错误
+                try:
+                    if hasattr(df_cleaned[col].dt, 'tz_localize'):
+                        df_cleaned[col] = df_cleaned[col].dt.tz_localize(None)
+                    elif hasattr(df_cleaned[col].dt, 'tz_convert'):
+                        df_cleaned[col] = df_cleaned[col].dt.tz_convert(None)
+                except:
+                    # 如果转换失败，尝试转换为字符串
+                    df_cleaned[col] = df_cleaned[col].astype(str)
+                    logger_warning(f"日期时间列 {col} 转换失败，已转为字符串格式")
         
         with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
             df_cleaned.to_excel(writer, sheet_name='Data', index=False)

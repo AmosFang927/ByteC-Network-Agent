@@ -284,6 +284,12 @@ class DataInputAgent:
             # 🎯 優先添加原始輸入文件路徑，讓agent_caller能檢測到並使用--import模式
             additional_args.append(filename)
             
+            # 🔧 检测LeadsADN文件并强制指定平台
+            filename_lower = str(filename).lower()
+            if 'leads_adn' in filename_lower or 'leadsamdn' in filename_lower:
+                additional_args.extend(['--force-platform', 'leads_adn'])
+                self.logger.info(f"🎯 检测到LeadsADN文件，强制指定平台为leads_adn")
+            
             if start_date and end_date:
                 additional_args.extend(['--start-date', start_date, '--end-date', end_date])
             if partner:
@@ -333,6 +339,11 @@ class DataInputAgent:
         try:
             import pandas as pd
             
+            # 检查文件名是否包含LeadsADN标识
+            filename = str(file_path).lower()
+            if 'leads_adn' in filename or 'leadsamdn' in filename:
+                return 'FTK'  # LeadsADN文件通常对应FTK Partner
+            
             # 读取Excel文件
             df = pd.read_excel(file_path)
             
@@ -346,7 +357,7 @@ class DataInputAgent:
                     source_str = str(source).strip()
                     
                     # 检查是否匹配FTK
-                    if source_str.upper().startswith('FTK'):
+                    if source_str.upper().startswith('FTK') or '(3)FTK' in source_str:
                         return 'FTK'
                     # 检查是否匹配RAMPUP
                     elif source_str.upper().startswith('RAMPUP'):
@@ -363,6 +374,14 @@ class DataInputAgent:
                     # 检查是否匹配TestPartner
                     elif source_str.upper().startswith('TESTPARTNER'):
                         return 'TestPartner'
+            
+            # 检查是否有原始LeadsADN字段（Affiliate字段）
+            if 'Affiliate' in df.columns:
+                affiliates = df['Affiliate'].dropna().unique()
+                for affiliate in affiliates:
+                    affiliate_str = str(affiliate).strip()
+                    if '(3)FTK' in affiliate_str or 'FTK' in affiliate_str.upper():
+                        return 'FTK'
             
             # 如果没有检测到特定Partner，返回默认值
             return 'IAByteC'

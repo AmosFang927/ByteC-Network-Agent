@@ -75,11 +75,26 @@ class GoogleSheetsManager:
                 'https://www.googleapis.com/auth/drive.readonly'
             ]
             
-            # 創建認證
-            credentials = Credentials.from_service_account_file(
-                self.credentials_file, 
-                scopes=scopes
-            )
+            # 創建認證 - 使用环境变量强制时间同步
+            import time
+            
+            # 尝试设置环境变量来处理时间偏移
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = self.credentials_file
+            
+            try:
+                credentials = Credentials.from_service_account_file(
+                    self.credentials_file, 
+                    scopes=scopes
+                )
+                self.logger.info("✅ JWT认证凭证创建成功")
+            except Exception as jwt_error:
+                self.logger.warning(f"⚠️ JWT认证失败，尝试重新创建: {jwt_error}")
+                # 等待一秒后重试
+                time.sleep(1)
+                credentials = Credentials.from_service_account_file(
+                    self.credentials_file, 
+                    scopes=scopes
+                )
             
             # 創建客戶端
             self.client = gspread.authorize(credentials)
