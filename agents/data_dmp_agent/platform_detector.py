@@ -31,8 +31,9 @@ class PlatformDetector:
             },
             "shopee": {
                 "filename_patterns": [
-                    r"_shopee_", r"_Shopee_", r"shopee", r"Shopee",
-                    r"shopee.*\.csv", r"shopee.*\.xlsx"
+                    r"_shopee_", r"_Shopee_", 
+                    r"(?!.*_AT_BM)(?!.*_at_bm)shopee", r"(?!.*_AT_BM)(?!.*_at_bm)Shopee",
+                    r"(?!.*_AT_BM)(?!.*_at_bm)shopee.*\.csv", r"(?!.*_AT_BM)(?!.*_at_bm)shopee.*\.xlsx"
                 ],
                 "column_patterns": [
                     "Campaign Name", "Ad Group Name", "Product Name",
@@ -57,7 +58,8 @@ class PlatformDetector:
                     r"access_trade.*\.csv", r"access_trade.*\.xlsx",
                     r"at_report.*\.csv", r"at_report.*\.xlsx",
                     r"at_data.*\.csv", r"at_data.*\.xlsx",
-                    r"report_at.*\.csv", r"report_at.*\.xlsx"
+                    r"report_at.*\.csv", r"report_at.*\.xlsx",
+                    r"_AT_BM", r"_at_bm", r"AT_BM", r"at_bm"
                 ],
                 "column_patterns": [
                     "Site", "Campaign Name", "Product ID", "Total Price",
@@ -91,6 +93,18 @@ class PlatformDetector:
                     "Product", "Commission", "Sale Amount", "Advertiser"
                 ],
                 "keywords": ["leads", "adn", "affiliate", "conversion", "revenue", "merchant", "commission"]
+            },
+            "dn_bm": {
+                "filename_patterns": [
+                    r"_dn_bm_", r"_DN_BM_", r"dn_bm", r"DN_BM",
+                    r".*_DN_BM\.csv", r".*_DN_BM\.xlsx"
+                ],
+                "column_patterns": [
+                    "Site", "Campaign Name", "Product ID", "Total Price",
+                    "Conversion Time", "aff_sub", "Transaction ID", "Status",
+                    "Reward", "Conversion ID", "Click Time", "Confirmation Time"
+                ],
+                "keywords": ["dn", "bm", "site", "campaign name", "total price"]
             }
         }
     
@@ -106,20 +120,27 @@ class PlatformDetector:
         """
         filename_lower = filename.lower()
         
+        # 優先處理：基於文件名的特殊規則 (higher priority)
+        if "_bm" in filename_lower or "_mb" in filename_lower:
+            if "ia" in filename_lower:
+                self.logger.info(f"基於文件名識別出平台: involve_asia (特殊規則: IA_BM)")
+                return "involve_asia"
+            elif "at" in filename_lower:
+                self.logger.info(f"基於文件名識別出平台: access_trade (特殊規則: AT_BM)")
+                return "access_trade"
+            elif "ls" in filename_lower:
+                self.logger.info(f"基於文件名識別出平台: linkshare (特殊規則: LS_BM)")
+                return "linkshare"
+            elif "dn" in filename_lower:
+                self.logger.info(f"基於文件名識別出平台: dn_bm (特殊規則: DN_BM)")
+                return "dn_bm"
+        
+        # 一般規則檢查
         for platform, rules in self.platform_rules.items():
             for pattern in rules["filename_patterns"]:
                 if re.search(pattern, filename_lower, re.IGNORECASE):
                     self.logger.info(f"基於文件名識別出平台: {platform} (匹配模式: {pattern})")
                     return platform
-        
-        # 特殊處理：基於文件名的其他規則
-        if "_bm" in filename_lower or "_mb" in filename_lower:
-            if "ia" in filename_lower:
-                return "involve_asia"
-            elif "at" in filename_lower:
-                return "access_trade"
-            elif "ls" in filename_lower:
-                return "linkshare"
         
         self.logger.warning(f"無法從文件名識別平台: {filename}")
         return None

@@ -265,8 +265,64 @@ class UnifiedFieldMapper:
             處理後的DataFrame
         """
         try:
-            # 導入貨幣轉換器
-            from .currency_converter import currency_converter
+            # 導入貨幣轉換器 - 使用多种导入方式以确保兼容性
+            currency_converter = None
+            
+            # 方法1: 相对导入
+            try:
+                from .currency_converter import currency_converter
+                logger.debug("✅ 使用相对导入加载货币转换器")
+            except (ImportError, ValueError) as e:
+                logger.debug(f"相对导入失败: {e}")
+                
+                # 方法2: 绝对导入
+                try:
+                    from agents.data_dmp_agent.currency_converter import currency_converter
+                    logger.debug("✅ 使用绝对导入加载货币转换器")
+                except ImportError as e:
+                    logger.debug(f"绝对导入失败: {e}")
+                    
+                    # 方法3: 模块导入 + 实例获取
+                    try:
+                        import agents.data_dmp_agent.currency_converter as currency_converter_module
+                        currency_converter = currency_converter_module.currency_converter
+                        logger.debug("✅ 使用模块导入+实例获取加载货币转换器")
+                    except ImportError as e:
+                        logger.debug(f"模块导入失败: {e}")
+                        
+                        # 方法4: 动态导入（最后手段）
+                        try:
+                            import sys
+                            import os
+                            
+                            # 添加agents目录到sys.path
+                            current_dir = os.path.dirname(os.path.abspath(__file__))
+                            agents_dir = os.path.dirname(current_dir)
+                            root_dir = os.path.dirname(agents_dir)
+                            
+                            if root_dir not in sys.path:
+                                sys.path.insert(0, root_dir)
+                            
+                            from agents.data_dmp_agent.currency_converter import currency_converter
+                            logger.debug("✅ 使用动态路径导入加载货币转换器")
+                        except Exception as e:
+                            logger.error(f"所有导入方法都失败: {e}")
+                            currency_converter = None
+            
+            # 如果导入失败，创建一个简单的回退转换器
+            if currency_converter is None:
+                logger.warning("⚠️ 貨幣轉換器導入失敗，使用固定匯率回退方案")
+                
+                class FallbackConverter:
+                    def convert_idr_to_usd(self, idr_amount):
+                        """使用固定汇率进行IDR到USD转换"""
+                        try:
+                            # 使用固定汇率 1 USD = 15000 IDR
+                            return float(idr_amount) / 15000.0 if idr_amount else 0.0
+                        except:
+                            return 0.0
+                
+                currency_converter = FallbackConverter()
             
             # 移除Custom Type處理邏輯
             # 1. USD Sale Amount <- Local Sale Amount 做IDR到USD轉換
@@ -288,7 +344,28 @@ class UnifiedFieldMapper:
             return unified_df
             
         except Exception as e:
-            logger.error(f"處理衍生字段失敗: {e}")
+            logger.warning(f"⚠️ 貨幣轉換失敗，使用固定匯率: {e}")
+            
+            # 使用回退方案：固定汇率转换
+            try:
+                # 1. USD Sale Amount <- Local Sale Amount 做IDR到USD轉換 (固定汇率)
+                if 'USD Sale Amount' in unified_df.columns and 'Local Sale Amount' in unified_df.columns:
+                    logger.info("使用固定汇率处理USD Sale Amount转换 (1 USD = 15000 IDR)")
+                    unified_df['USD Sale Amount'] = unified_df['Local Sale Amount'].apply(
+                        lambda x: float(x) / 15000.0 if pd.notna(x) and x != '' and x != 0 else 0.0
+                    )
+                
+                # 2. USD Reward <- Local Reward 做IDR到USD轉換 (固定汇率)
+                if 'USD Reward' in unified_df.columns and 'Local Reward' in unified_df.columns:
+                    logger.info("使用固定汇率处理USD Reward转换 (1 USD = 15000 IDR)")
+                    unified_df['USD Reward'] = unified_df['Local Reward'].apply(
+                        lambda x: float(x) / 15000.0 if pd.notna(x) and x != '' and x != 0 else 0.0
+                    )
+                
+                logger.info("✅ 固定汇率回退转换完成")
+            except Exception as fallback_error:
+                logger.error(f"❌ 固定汇率回退也失败: {fallback_error}")
+            
             return unified_df
     
     def apply_data_transformations(self, df: pd.DataFrame, transformations: Dict[str, Dict[str, Any]]) -> pd.DataFrame:

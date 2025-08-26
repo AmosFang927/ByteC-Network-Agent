@@ -27,12 +27,14 @@ try:
     from .platform_detector import PlatformDetector
     from .field_mapping_manager import FieldMappingManager
     from .at_bm_data_processor import ATBMDataProcessor
+    from .dn_bm_data_processor import DNBMDataProcessor
 except ImportError:
     from agents.data_dmp_agent.database_manager import EnhancedDMPDatabaseManager
     from agents.data_dmp_agent.api_config_manager import APIConfigManager
     from agents.data_dmp_agent.platform_detector import PlatformDetector
     from agents.data_dmp_agent.field_mapping_manager import FieldMappingManager
     from agents.data_dmp_agent.at_bm_data_processor import ATBMDataProcessor
+    from agents.data_dmp_agent.dn_bm_data_processor import DNBMDataProcessor
 
 # API數據獲取器從api_agent導入
 try:
@@ -69,6 +71,7 @@ class DMPAgent:
         self.platform_detector = PlatformDetector()
         self.field_mapping_manager = FieldMappingManager()
         self.at_bm_processor = ATBMDataProcessor()
+        self.dn_bm_processor = DNBMDataProcessor()
         
         # 初始化修正後數據存儲
         self._corrected_data = None
@@ -119,7 +122,8 @@ class DMPAgent:
                 'involve_asia': 'IA_BM',
                 'shopee': 'SHOPEE',
                 'tiktok_shop': 'TIKTOK_SHOP',
-                'linkshare': 'LS_BM'  # 更新為 LS_BM
+                'linkshare': 'LS_BM',  # 更新為 LS_BM
+                'dn_bm': 'DN_BM'  # 新增 DN_BM
             }
             return platform_mapping.get(detected_platform, detected_platform.upper())
         
@@ -132,6 +136,8 @@ class DMPAgent:
             return 'IA_BM'
         elif '_ls_bm' in filename_lower:
             return 'LS_BM'
+        elif '_dn_bm' in filename_lower:
+            return 'DN_BM'  # 新增 DN_BM 檢測
         elif '_ia_ot' in filename_lower:
             return 'IA_OT'
         elif '_ia_mb' in filename_lower:
@@ -432,6 +438,34 @@ class DMPAgent:
                     result.update({
                         'success': False,
                         'error': processor_result.get('error', 'AT_BM processing failed'),
+                        'stats': processor_result.get('stats', {})
+                    })
+                    return result
+                    
+            elif platform == 'DN_BM':
+                try:
+                    from .dn_bm_data_processor import DNBMDataProcessor
+                except ImportError:
+                    from agents.data_dmp_agent.dn_bm_data_processor import DNBMDataProcessor
+                    
+                processor = DNBMDataProcessor()
+                processor_result = processor.process_dn_bm_file(file_path)
+                
+                if processor_result['success']:
+                    result.update({
+                        'success': True,
+                        'records_count': processor_result['records_processed'],
+                        'processed_data': processor_result.get('output_file'),
+                        'stats': processor_result.get('stats', {}),
+                        'mapping_info': processor_result.get('mapping_info', {})
+                    })
+                    # 保存DN_BM輸出文件路徑
+                    self._current_dn_bm_output_file = processor_result.get('output_file')
+                    return result
+                else:
+                    result.update({
+                        'success': False,
+                        'error': processor_result.get('error', 'DN_BM processing failed'),
                         'stats': processor_result.get('stats', {})
                     })
                     return result
@@ -897,6 +931,20 @@ class DMPAgent:
                 else:
                     logger.warning("⚠️ 未找到AT_BM處理結果文件，跳過Reporter格式轉換")
             
+            elif platform and 'DN_BM' in platform:
+                logger.info("🎯 DN_BM Passthrough模式: 更新Passthrough文件並生成DMP temp文件...")
+                
+                # 查找最新的DN_BM處理結果文件
+                dn_bm_processed_file = None
+                if hasattr(self, '_current_dn_bm_output_file') and self._current_dn_bm_output_file:
+                    dn_bm_processed_file = self._current_dn_bm_output_file
+                    logger.info(f"🔍 找到DN_BM處理結果文件: {dn_bm_processed_file}")
+                
+                if dn_bm_processed_file and os.path.exists(dn_bm_processed_file):
+                    await self._update_passthrough_file_with_dn_bm_data(file_path, dn_bm_processed_file)
+                else:
+                    logger.warning("⚠️ 未找到DN_BM處理結果文件，跳過Passthrough文件更新")
+                    
             elif platform and 'LS_BM' in platform:
                 logger.info("🎯 LS_BM Passthrough模式: 更新Passthrough文件並生成DMP temp文件...")
                 
@@ -1174,6 +1222,53 @@ class DMPAgent:
             import traceback
             logger.error(f"錯誤詳情: {traceback.format_exc()}")
     
+    async def _update_passthrough_file_with_dn_bm_data(self, original_csv_path: str, dn_bm_processed_file: str):
+        """
+        使用DN_BM處理後的數據更新對應的Passthrough文件
+        
+        Args:
+            original_csv_path: 原始CSV文件路徑
+            dn_bm_processed_file: DN_BM處理結果文件路徑
+        """
+        try:
+            import pandas as pd
+            import glob
+            import os
+            from pathlib import Path
+            
+            logger.info(f"🔄 開始更新DN_BM Passthrough文件...")
+            logger.info(f"📂 原始文件: {original_csv_path}")
+            logger.info(f"📂 處理結果文件: {dn_bm_processed_file}")
+            
+            # 構建Passthrough文件名模式
+            file_basename = Path(original_csv_path).stem
+            passthrough_pattern = f"output/Passthrough_{file_basename}_*.xlsx"
+            passthrough_files = glob.glob(passthrough_pattern)
+            
+            if not passthrough_files:
+                logger.warning(f"⚠️ 未找到對應的Passthrough文件: {passthrough_pattern}")
+                return
+            
+            # 使用最新的Passthrough文件
+            passthrough_file = max(passthrough_files, key=os.path.getctime)
+            logger.info(f"📄 找到Passthrough文件: {passthrough_file}")
+            
+            # 讀取DN_BM處理後的數據
+            processed_df = pd.read_csv(dn_bm_processed_file)
+            logger.info(f"📊 讀取DN_BM處理數據: {len(processed_df)} 條記錄, {len(processed_df.columns)} 個字段")
+            
+            # 寫入Passthrough Excel文件
+            with pd.ExcelWriter(passthrough_file, engine='openpyxl', mode='w') as writer:
+                processed_df.to_excel(writer, sheet_name='Data', index=False)
+            
+            logger.info(f"✅ 成功更新DN_BM Passthrough文件，現在包含unified fields")
+            logger.info(f"🎯 Reporter Agent將讀取到正確的DN_BM字段映射")
+            
+        except Exception as e:
+            logger.error(f"❌ 更新DN_BM Passthrough文件失敗: {e}")
+            import traceback
+            logger.error(f"錯誤詳情: {traceback.format_exc()}")
+
     async def _update_passthrough_file_with_leads_adn_data(self, original_csv_path: str, leads_adn_processed_file: str):
         """
         使用LeadsADN處理後的數據更新對應的Passthrough文件

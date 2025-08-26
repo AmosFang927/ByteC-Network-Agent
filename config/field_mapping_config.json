@@ -1,6 +1,6 @@
 {
   "google_sheets": {
-    "enabled": false,
+    "enabled": true,
     "project_id": "solar-idea-463423-h8",
     "credentials_file": "solar-idea-463423-h8-bd12ec2c5361.json",
     "spreadsheet_id": "1SaHZ0igiuMBm2gHFD5JSs1hkltphdXqRAlbaZ9nEUf0",

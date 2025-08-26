@@ -368,8 +368,8 @@ class FileReportGenerator:
         try:
             logger.info(f"🎯 生成 {partner_name} Partner報告...")
             
-            # 過濾該Partner的數據
-            partner_df = df[df['Partner'] == partner_name].copy()
+            # 過濾該Partner的數據（忽略大小写）
+            partner_df = df[df['Partner'].str.upper() == partner_name.upper()].copy()
             
             if partner_df.empty:
                 logger.warning(f"⚠️ 沒有找到 {partner_name} 的數據")

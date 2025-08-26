@@ -68,26 +68,64 @@
     },
     "access_trade": {
       "field_mappings": {
-        "Advertiser": "Campaign Name",
-        "Conversion ID": "Conversion ID",
-        "Datetime Conversion": "Conversion Time",
-        "Local Sale Amount": "Total Price",
-        "Local Reward": "Reward",
+        "Advertiser": "Nama Campaign",
+        "Conversion ID": "Id Konversi",
+        "Datetime Conversion": "Waktu Konversi",
+        "Local Sale Amount": "Harga Total",
+        "Local Reward": "Jumlah Komisi",
         "Status": "Status",
         "Publisher Sub ID 1": "aff_sub",
         "Publisher Sub ID 2": "aff_sub2",
         "Publisher Sub ID 3": "aff_sub3",
-        "Customer Type": "Customer Type",
+        "Publisher Sub ID 4": "aff_sub4",
+        "Publisher Sub ID 5": "aff_sub5",
+        "Customer Type": "Tipe Konsumen",
         "Category ID": "Category ID",
         "Product ID": "Product ID"
       },
       "data_transformations": {
         "Local Sale Amount": {
           "type": "currency",
+          "from_currency": "IDR",
           "currency": "USD"
         },
         "Local Reward": {
           "type": "currency",
+          "from_currency": "IDR",
+          "currency": "USD"
+        },
+        "Datetime Conversion": {
+          "type": "date",
+          "format": "%Y-%m-%d %H:%M:%S"
+        }
+      }
+    },
+    "dn_bm": {
+      "field_mappings": {
+        "Advertiser": "Nama Campaign",
+        "Conversion ID": "Id Konversi",
+        "Datetime Conversion": "Waktu Konversi",
+        "Local Sale Amount": "Harga Total",
+        "Local Reward": "Jumlah Komisi",
+        "Status": "Status",
+        "Publisher Sub ID 1": "aff_sub",
+        "Publisher Sub ID 2": "aff_sub2",
+        "Publisher Sub ID 3": "aff_sub3",
+        "Publisher Sub ID 4": "aff_sub4",
+        "Publisher Sub ID 5": "aff_sub5",
+        "Customer Type": "Tipe Konsumen",
+        "Category ID": "Category ID",
+        "Product ID": "Product ID"
+      },
+      "data_transformations": {
+        "Local Sale Amount": {
+          "type": "currency",
+          "from_currency": "IDR",
+          "currency": "USD"
+        },
+        "Local Reward": {
+          "type": "currency",
+          "from_currency": "IDR",
           "currency": "USD"
         },
         "Datetime Conversion": {
@@ -115,49 +153,6 @@
         "conversion_date": {
           "type": "date",
           "format": "%Y-%m-%d %H:%M:%S"
-        }
-      }
-    },
-    "leads_adn": {
-      "field_mappings": {
-        "Conversion ID": "TID",
-        "Advertiser": "Offer", 
-        "Datetime Conversion": "Conv. Time",
-        "USD Sale Amount": "Event Value",
-        "USD Reward": "Revenue",
-        "Status": "Conv. Status",
-        "Publisher Sub ID 1": "Affiliate",
-        "Publisher Sub ID 2": "S1",
-        "Publisher Sub ID 3": "S2", 
-        "Publisher Sub ID 4": "S3",
-        "Publisher Sub ID 5": "S4",
-        "Category ID": "Brand",
-        "Product ID": "Event Token",
-        "Customer Type": "Geo.",
-        "Campaign": "Offer",
-        "Product Name": "Adv. Offer",
-        "Order ID": "TID",
-        "Click ID": "Aff. Click ID",
-        "IP Address": "IP",
-        "User Agent": "UA",
-        "Traffic Source": "Traffic Tag",
-        "Conversion IP": "Conv. IP",
-        "Event Value": "Event Value",
-        "Partner": "extracted_from_affiliate"
-      },
-      "data_transformations": {
-        "USD Sale Amount": {
-          "type": "numeric"
-        },
-        "USD Reward": {
-          "type": "numeric"
-        },
-        "Datetime Conversion": {
-          "type": "date",
-          "format": "%Y-%m-%d %H:%M:%S %z"
-        },
-        "Event Value": {
-          "type": "numeric"
         }
       }
     }

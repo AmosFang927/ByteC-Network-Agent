@@ -50,7 +50,7 @@ class UnifiedOptimizedDatabase:
         
         # Partner 到 aff_sub 模式的映射，與 dashboard agent 保持一致
         partner_mapping = {
-            'DEEPLEAPER': "aff_sub LIKE 'OEM%'",  # DeepLeaper 使用 OEM 開頭的 aff_sub
+            'DEEPLEAPER': "(aff_sub LIKE 'DL%' OR aff_sub LIKE 'OPPO%' OR aff_sub LIKE 'VIVO%' OR aff_sub LIKE 'OEM1%' OR aff_sub LIKE 'OEM2%' OR aff_sub LIKE 'OEM3%' OR aff_sub LIKE 'XIAOMI%')",  # DeepLeaper 使用 DL 開頭或包含指定品牌的 aff_sub
             'BYTEC': "aff_sub LIKE 'ByteC%'",     # ByteC 使用 ByteC 開頭的 aff_sub  
             'BYTEC-NETWORK': "aff_sub LIKE 'ByteC%'",
             'RAMPUP': "(aff_sub LIKE 'RAMPUP_%' OR aff_sub LIKE 'RPID%')",
@@ -548,7 +548,7 @@ class UnifiedOptimizedDatabase:
                 query = f"""
                     SELECT 
                         CASE 
-                            WHEN aff_sub LIKE 'OEM%' THEN 'DeepLeaper'
+                            WHEN (aff_sub LIKE 'DL%' OR aff_sub LIKE 'OEM%' OR aff_sub LIKE 'OPPO%' OR aff_sub LIKE 'VIVO%' OR aff_sub LIKE 'XIAOMI%') THEN 'DeepLeaper'
                             WHEN aff_sub LIKE 'RAMPUP_%' OR aff_sub LIKE 'RPID%' THEN 'RAMPUP'
                             WHEN aff_sub LIKE 'MKK%' THEN 'MKK'
                             WHEN aff_sub LIKE 'InvolveAsia%' THEN 'InvolveAsia'

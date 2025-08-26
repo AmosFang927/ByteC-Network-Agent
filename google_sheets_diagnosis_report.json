@@ -1,0 +1,87 @@
+{
+  "environment": {
+    "system_time": {
+      "utc": "2025-08-24T07:09:37.299354+00:00",
+      "local": "2025-08-24T15:09:37.299529",
+      "year": 2025,
+      "is_abnormal": true
+    },
+    "network": {
+      "connected": false,
+      "error": "Command '['ping', '-c', '1', 'google.com']' timed out after 10 seconds"
+    },
+    "credentials": {
+      "exists": true,
+      "valid_format": true,
+      "missing_fields": [],
+      "project_id": "solar-idea-463423-h8",
+      "client_email": "bytec-network-agent@solar-idea-463423-h8.iam.gserviceaccount.com"
+    }
+  },
+  "jwt_creation": {
+    "method1_standard": {
+      "success": true,
+      "time_taken": 0.048779964447021484,
+      "token_expiry": null
+    },
+    "method2_manual": {
+      "success": true,
+      "time_taken": 0.04196619987487793,
+      "token_expiry": null
+    },
+    "method3_gspread": {
+      "success": true,
+      "time_taken": 0.04236006736755371,
+      "client_type": "Client"
+    }
+  },
+  "token_refresh": {
+    "refresh_attempt_1": {
+      "success": false,
+      "error": "('invalid_grant: Invalid JWT Signature.', {'error': 'invalid_grant', 'error_description': 'Invalid JWT Signature.'})",
+      "error_type": "RefreshError",
+      "is_jwt_error": true
+    },
+    "refresh_attempt_2": {
+      "success": false,
+      "error": "('invalid_grant: Invalid JWT Signature.', {'error': 'invalid_grant', 'error_description': 'Invalid JWT Signature.'})",
+      "error_type": "RefreshError",
+      "is_jwt_error": true
+    },
+    "refresh_attempt_3": {
+      "success": false,
+      "error": "('invalid_grant: Invalid JWT Signature.', {'error': 'invalid_grant', 'error_description': 'Invalid JWT Signature.'})",
+      "error_type": "RefreshError",
+      "is_jwt_error": true
+    }
+  },
+  "google_sheets_connection": {
+    "gspread.service_account": {
+      "success": false,
+      "error": "('invalid_grant: Invalid JWT Signature.', {'error': 'invalid_grant', 'error_description': 'Invalid JWT Signature.'})",
+      "error_type": "RefreshError",
+      "is_jwt_error": true
+    },
+    "gspread.oauth": {
+      "success": false,
+      "error": "[Errno 2] No such file or directory: '/Users/amosfang/.config/gspread/credentials.json'",
+      "error_type": "FileNotFoundError",
+      "is_jwt_error": false
+    },
+    "manual_credentials": {
+      "success": false,
+      "error": "('invalid_grant: Invalid JWT Signature.', {'error': 'invalid_grant', 'error_description': 'Invalid JWT Signature.'})",
+      "error_type": "RefreshError",
+      "is_jwt_error": true
+    }
+  },
+  "suggestions": [
+    "🕐 系统时间异常（显示为2025年），需要同步系统时间：",
+    "   - macOS: sudo sntp -sS time.apple.com",
+    "   - 或通过系统偏好设置 > 日期与时间 > 自动设置",
+    "🌐 网络连接问题，请检查网络连接",
+    "📊 所有连接方法都失败，建议：",
+    "   - 检查 Google Sheets API 是否已启用",
+    "   - 确认 Service Account 有访问目标 Spreadsheet 的权限"
+  ]
+}

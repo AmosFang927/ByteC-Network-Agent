@@ -12,7 +12,10 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 import pandas as pd
 
-from .google_sheets_manager import GoogleSheetsManager
+try:
+    from .google_sheets_manager_bypass import GoogleSheetsManagerBypass as GoogleSheetsManager
+except ImportError:
+    from .google_sheets_manager import GoogleSheetsManager
 from .unified_field_mapper import UnifiedFieldMapper
 
 class FieldMappingManager:
@@ -399,11 +402,11 @@ class FieldMappingManager:
     
     def get_platform_mapping_info(self, platform: str) -> Dict[str, Any]:
         """獲取平台的映射信息"""
-        # 只有AT_BM相關平台才使用Google Sheets配置
-        is_at_bm_platform = platform.lower() in ['access_trade', 'at_bm']
+        # AT_BM和DN_BM相關平台使用Google Sheets配置
+        is_at_bm_platform = platform.lower() in ['access_trade', 'at_bm', 'dn_bm']
         
         if is_at_bm_platform:
-            # AT_BM平台：使用Google Sheets配置
+            # AT_BM/DN_BM平台：使用Google Sheets配置
             if platform not in self.field_mappings.get("platforms", {}):
                 return {"error": f"平台 {platform} 沒有找到映射配置"}
             
@@ -411,7 +414,7 @@ class FieldMappingManager:
             field_mappings = platform_config.get("field_mappings", {}).copy()
             data_transformations = platform_config.get("data_transformations", {}).copy()
             
-            self.logger.info(f"AT_BM平台使用Google Sheets配置，統一字段數: {len(field_mappings)}")
+            self.logger.info(f"AT_BM/DN_BM平台使用Google Sheets配置，統一字段數: {len(field_mappings)}")
             
             return {
                 "platform": platform,
@@ -420,8 +423,8 @@ class FieldMappingManager:
                 "mapping_report": self.unified_mapper.get_field_mapping_report(field_mappings)
             }
         else:
-            # 非AT_BM平台：使用本地預設映射
-            self.logger.info(f"非AT_BM平台 ({platform}) 使用本地預設映射")
+            # 非AT_BM/DN_BM平台：使用本地預設映射
+            self.logger.info(f"非AT_BM/DN_BM平台 ({platform}) 使用本地預設映射")
             
             # 返回預設的involve_asia映射配置
             if platform.lower() == 'involve_asia':
@@ -481,6 +484,44 @@ class FieldMappingManager:
                 }
                 
                 self.logger.info(f"使用linkshare預設映射，統一字段數: {len(field_mappings)}")
+                
+                return {
+                    "platform": platform,
+                    "field_mappings": field_mappings,
+                    "data_transformations": data_transformations,
+                    "mapping_report": self.unified_mapper.get_field_mapping_report(field_mappings)
+                }
+            elif platform.lower() == 'dn_bm':
+                # DN_BM平台：定义核心unified fields
+                field_mappings = {
+                    'Conversion ID': 'Id Konversi',
+                    'Datetime Conversion': 'Waktu Konversi',
+                    'USD Sale Amount': 'Harga Total',
+                    'Local Sale Amount': 'Harga Total',
+                    'Local Reward': 'Jumlah Komisi',
+                    'Status': 'Status',
+                    'Platform': 'platform',
+                    'Advertiser': 'Nama Campaign',
+                    'Campaign Name': 'Nama Campaign',
+                    'Partner': 'partner',
+                    'Publisher Sub ID 1': 'aff_sub',
+                    'Publisher Sub ID 2': 'aff_sub2',
+                    'Publisher Sub ID 3': 'aff_sub3',
+                    'Publisher Sub ID 4': 'aff_sub4',
+                    'Publisher Sub ID 5': 'aff_sub5',
+                    'Customer Type': 'Tipe Konsumen',
+                    'Category ID': 'Category ID',
+                    'Product ID': 'Product ID'
+                }
+                
+                data_transformations = {
+                    'Datetime Conversion': {'type': 'datetime', 'format': '%Y-%m-%d %H:%M:%S'},
+                    'USD Sale Amount': {'type': 'currency', 'from_currency': 'IDR', 'currency': 'USD'},
+                    'Local Sale Amount': {'type': 'currency', 'currency': 'IDR'},
+                    'Local Reward': {'type': 'currency', 'from_currency': 'IDR', 'currency': 'USD'}
+                }
+                
+                self.logger.info(f"使用dn_bm預設映射，統一字段數: {len(field_mappings)}")
                 
                 return {
                     "platform": platform,

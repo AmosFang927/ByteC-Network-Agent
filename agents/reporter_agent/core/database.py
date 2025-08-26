@@ -172,7 +172,7 @@ class PostbackDatabase:
         """獲取統一的Partner CASE WHEN條件，與config.py中的match_source_to_partner函數保持一致"""
         return """
         CASE 
-            WHEN (c.aff_sub1 LIKE 'OPPO%' OR c.aff_sub1 LIKE 'VIVO%' OR c.aff_sub1 LIKE 'OEM1%' OR c.aff_sub1 LIKE 'OEM2%' OR c.aff_sub1 LIKE 'OEM3%' OR c.aff_sub1 LIKE 'XIAOMI%') THEN 'DeepLeaper'
+            WHEN (c.aff_sub1 LIKE 'DL%' OR c.aff_sub1 LIKE 'OPPO%' OR c.aff_sub1 LIKE 'VIVO%' OR c.aff_sub1 LIKE 'OEM1%' OR c.aff_sub1 LIKE 'OEM2%' OR c.aff_sub1 LIKE 'OEM3%' OR c.aff_sub1 LIKE 'XIAOMI%') THEN 'DeepLeaper'
             WHEN (c.aff_sub1 LIKE 'RAMPUP%' OR c.aff_sub1 LIKE 'RPID%' OR c.aff_sub1 LIKE 'AF%') THEN 'RAMPUP'
             WHEN c.aff_sub1 = 'MP' THEN 'MP'
             WHEN c.aff_sub1 LIKE 'MKK%' THEN 'MKK'
@@ -195,7 +195,7 @@ class PostbackDatabase:
         
         # 統一的 Partner 到 aff_sub1 模式映射，與config.py中的match_source_to_partner函數保持一致
         partner_mapping = {
-            'DEEPLEAPER': "(c.aff_sub1 LIKE 'OPPO%' OR c.aff_sub1 LIKE 'VIVO%' OR c.aff_sub1 LIKE 'OEM1%' OR c.aff_sub1 LIKE 'OEM2%' OR c.aff_sub1 LIKE 'OEM3%' OR c.aff_sub1 LIKE 'XIAOMI%')",
+            'DEEPLEAPER': "(c.aff_sub1 LIKE 'DL%' OR c.aff_sub1 LIKE 'OPPO%' OR c.aff_sub1 LIKE 'VIVO%' OR c.aff_sub1 LIKE 'OEM1%' OR c.aff_sub1 LIKE 'OEM2%' OR c.aff_sub1 LIKE 'OEM3%' OR c.aff_sub1 LIKE 'XIAOMI%')",
             'RAMPUP': "(c.aff_sub1 LIKE 'RAMPUP%' OR c.aff_sub1 LIKE 'RPID%' OR c.aff_sub1 LIKE 'AF%')",
             'MP': "c.aff_sub1 = 'MP'",
             'MKK': "c.aff_sub1 LIKE 'MKK%'",

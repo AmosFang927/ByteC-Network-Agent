@@ -84,13 +84,13 @@ TARGET_PARTNER = None  # 指定要处理的Partner，None表示处理所有Partn
 # Sources 是 aff_sub1 字段的实际值
 PARTNER_SOURCES_MAPPING = {
     "RAMPUP": {
-        "sources": ["RAMPUP"],  # RAMPUP, RPIDxxx... 等以RAMPUP或RPID开头的
-        "pattern": r"^(RAMPUP|RPID.*|AF.*|RPVN.*)",  # 正则表达式匹配模式 - 包含RAMPUP、RPID、AF和RPVN开头的Sources
+        "sources": ["RAMPUP"],  # RAMPUP, RPIDxxx, RP_xxx... 等以RAMPUP、RPID或RP_开头的
+        "pattern": r"^(RAMPUP|RPID.*|RP_.*|AF.*|RPVN.*)",  # 正则表达式匹配模式 - 包含RAMPUP、RPID、RP_、AF和RPVN开头的Sources
         "email_enabled": True,  # 邮件发送开关
         #"email_recipients": ["amosfang927@gmail.com"]  # 收件人列表
         "email_recipients": ["max@rampupads.com", "offer@rampupads.com", "bill.zhang@rampupads.com"],
         "show_invalid_warning": False,  # RAMPUP所有轉化status應該沒有invalid，所以summary不用呈現⚠️ Invalid Conversion
-        "mockup_multiplier": 0.9  # RAMPUP Partner 使用 90% 的 mockup 倍數
+        "mockup_multiplier": 0.7  # RAMPUP Partner 使用 70% 的 mockup 倍數
     },
     "FTK": {
         "sources": ["FTK"],  # FTK source
@@ -101,8 +101,8 @@ PARTNER_SOURCES_MAPPING = {
         "mockup_multiplier": 0.9  # FTK Partner 使用 90% 的 mockup 倍數
     },
     "DeepLeaper": {
-        "sources": ["OPPO", "VIVO", "OEM1", "OEM2", "OEM3", "XIAOMI"],  # 包含OPPO、VIVO、OEM1、OEM2、OEM3、XIAOMI
-        "pattern": r".*(OPPO|VIVO|OEM1|OEM2|OEM3|XIAOMI).*",  # 匹配包含OPPO、VIVO、OEM1、OEM2、OEM3、XIAOMI的所有Sources
+        "sources": ["OPPO", "VIVO", "OEM1", "OEM2", "OEM3", "XIAOMI", "DL"],  # 包含OPPO、VIVO、OEM1、OEM2、OEM3、XIAOMI、DL
+        "pattern": r"^DL.*|.*(OPPO|VIVO|OEM1|OEM2|OEM3|XIAOMI).*",  # 匹配以DL开头的所有值或包含OPPO、VIVO、OEM1、OEM2、OEM3、XIAOMI的所有Sources
         "email_enabled": True,  # 邮件发送开关
         "email_recipients": ["sunjiakuo@deepleaper.com", "deepleaper@gmail.com"],  # 收件人列表
         "show_invalid_warning": True,  # 其他partner保持原有的invalid warning顯示邏輯
