@@ -84,13 +84,13 @@ TARGET_PARTNER = None  # 指定要处理的Partner，None表示处理所有Partn
 # Sources 是 aff_sub1 字段的实际值
 PARTNER_SOURCES_MAPPING = {
     "RAMPUP": {
-        "sources": ["RAMPUP"],  # RAMPUP, RPIDxxx, RP_xxx... 等以RAMPUP、RPID或RP_开头的
-        "pattern": r"^(RAMPUP|RPID.*|RP_.*|AF.*|RPVN.*)",  # 正则表达式匹配模式 - 包含RAMPUP、RPID、RP_、AF和RPVN开头的Sources
+        "sources": ["RAMPUP", "RP"],  # RAMPUP, RP, RPIDxxx, RP_xxx... 等以RAMPUP、RP、RPID或RP_开头的，以及包含_RP_的格式
+        "pattern": r"^(RAMPUP|RP|RPID.*|RP_.*|AF.*|RPVN.*|.*_RP_.*)",  # 正则表达式匹配模式 - 包含RAMPUP、RP、RPID、RP_、AF和RPVN开头的Sources，新增支持xxx_RP_xxx格式
         "email_enabled": True,  # 邮件发送开关
         #"email_recipients": ["amosfang927@gmail.com"]  # 收件人列表
         "email_recipients": ["max@rampupads.com", "offer@rampupads.com", "bill.zhang@rampupads.com"],
         "show_invalid_warning": False,  # RAMPUP所有轉化status應該沒有invalid，所以summary不用呈現⚠️ Invalid Conversion
-        "mockup_multiplier": 0.7  # RAMPUP Partner 使用 70% 的 mockup 倍數
+        "mockup_multiplier": 1.0  # RAMPUP Partner 使用 100% 的 mockup 倍數
     },
     "FTK": {
         "sources": ["FTK"],  # FTK source
@@ -98,15 +98,15 @@ PARTNER_SOURCES_MAPPING = {
         "email_enabled": True,  # 邮件发送开关
         "email_recipients": ["AmosFang927@gmail.com", "ningding@iflytek.com", "xlfeng6@iflytek.com", "cbg_xhbao3@iflytek.com", "jjzhu26@iflytek.com", "xmliu28@iflytek.com"],  # 收件人列表（包含FTK抄送收件人）
         "show_invalid_warning": True,  # FTK partner保持原有的invalid warning顯示邏輯
-        "mockup_multiplier": 0.9  # FTK Partner 使用 90% 的 mockup 倍數
+        "mockup_multiplier": 1.0  # FTK Partner 使用 100% 的 mockup 倍數
     },
-    "DeepLeaper": {
-        "sources": ["OPPO", "VIVO", "OEM1", "OEM2", "OEM3", "XIAOMI", "DL"],  # 包含OPPO、VIVO、OEM1、OEM2、OEM3、XIAOMI、DL
-        "pattern": r"^DL.*|.*(OPPO|VIVO|OEM1|OEM2|OEM3|XIAOMI).*",  # 匹配以DL开头的所有值或包含OPPO、VIVO、OEM1、OEM2、OEM3、XIAOMI的所有Sources
+    "DL": {
+        "sources": ["DL", "OPPO", "VIVO", "OEM1", "OEM2", "OEM3", "XIAOMI"],  # DL包含所有DeepLeaper相關的sources
+        "pattern": r"^(DL.*|OPPO.*|VIVO.*|OEM1.*|OEM2.*|OEM3.*|XIAOMI.*)",  # 匹配DL和所有DeepLeaper相關記錄
         "email_enabled": True,  # 邮件发送开关
         "email_recipients": ["sunjiakuo@deepleaper.com", "deepleaper@gmail.com"],  # 收件人列表
-        "show_invalid_warning": True,  # 其他partner保持原有的invalid warning顯示邏輯
-        "mockup_multiplier": 0.9  # DeepLeaper Partner 使用 90% 的 mockup 倍數
+        "show_invalid_warning": True,  # DL partner保持原有的invalid warning顯示邏輯
+        "mockup_multiplier": 1.0  # DL Partner 使用 100% 的 mockup 倍數
     },
     "TestPartner": {
         "sources": ["TestPartner"],
@@ -122,15 +122,31 @@ PARTNER_SOURCES_MAPPING = {
         "email_enabled": True,  # 邮件发送开关
         "email_recipients": ["AmosFang927@gmail.com"],  # 收件人列表（请修改为实际的MKK邮箱）
         "show_invalid_warning": True,  # MKK partner保持原有的invalid warning顯示邏輯
-        "mockup_multiplier": 1.0  # MKK Partner 使用 100% 的 mockup 倍數（不調整）
+        "mockup_multiplier": 0.9  # MKK Partner 使用 90% 的 mockup 倍數
     },
     "MP": {
         "sources": ["MP"],  # MP source
-        "pattern": r"^MP$",  # 只匹配確切的MP，不匹配其他變體
+        "pattern": r"^MP.*",  # 匹配以MP開頭的所有Sources（參考FTK設置）
         "email_enabled": True,  # 邮件发送开关
         "email_recipients": ["AmosFang927@gmail.com"],  # 收件人列表（请修改为实际的MP邮箱）
         "show_invalid_warning": True,  # MP partner保持原有的invalid warning顯示邏輯
-        "mockup_multiplier": 0.9  # MP Partner 使用 90% 的 mockup 倍數
+        "mockup_multiplier": 1.0  # MP Partner 使用 100% 的 mockup 倍數
+    },
+    "GX": {
+        "sources": ["GX"],  # GX source
+        "pattern": r"^GX.*",  # 匹配以GX開頭的所有Sources（參考FTK設置）
+        "email_enabled": True,  # 邮件发送开关
+        "email_recipients": ["AmosFang927@gmail.com"],  # 收件人列表（请修改为实际的GX邮箱）
+        "show_invalid_warning": True,  # GX partner保持原有的invalid warning顯示邏輯
+        "mockup_multiplier": 1.0  # GX Partner 使用 100% 的 mockup 倍數
+    },
+    "RP": {
+        "sources": ["RP"],  # RP source
+        "pattern": r"^RP.*",  # 匹配以RP开头的所有Sources
+        "email_enabled": True,  # 邮件发送开关
+        "email_recipients": ["AmosFang927@gmail.com"],  # 收件人列表（请修改为实际的RP邮箱）
+        "show_invalid_warning": True,  # RP partner保持原有的invalid warning顯示邏輯
+        "mockup_multiplier": 1.0  # RP Partner 使用 100% 的 mockup 倍數
     },
     "ByteC": {
         "sources": ["ALL"],  # ByteC 处理所有数据，不限制 Sources
@@ -198,6 +214,9 @@ DMP_PASSTHROUGH_REMOVE_COLUMNS = [
     "User Agent",
     "Traffic Source",
     "Event Value",
+    "Original Event Value",  # Reporter Agent 報表中不需要呈現此欄位
+    "Conversion IP",  # Reporter Agent 報表中不需要呈現此欄位
+    # "Source",  # 註釋掉：Reporter Agent 需要 Source 欄位來生成報告
     "Source File",
     "Processed Date"
 ]  # DMP Agent passthrough模式下要移除的栏位
@@ -229,13 +248,13 @@ PUB_COMMISSION_RATE_MAPPING = {
     ("RAMPUP", "Shopee ID (Media Buyers) - CPS"): 2.5,  # 您指定的2.5%
     ("RAMPUP", "Shopee PH - CPS"): 2.7,  # 您指定的2.7%
     
-    # DeepLeaper Partner配置
-    ("DeepLeaper", "TikTok Shop ID - CPS"): 1.0,  # 1.0表示1%
-    ("DeepLeaper", "Shopee TH - CPS"): 2.0,  # 您示例中的2%
-    ("DeepLeaper", "Shopee MY - CPS"): 2.0,  # 您示例中的2%
-    ("DeepLeaper", "Shopee PH - CPS"): 2.5,  # 您示例中的2.5%
-    ("DeepLeaper", "Shopee ID (Media Buyers) - CPS"): 1.5,  # 您示例中的3%
-    ("DeepLeaper", "Shopee VN - CPS"): 3.0,  # 您示例中的3%
+    # DL Partner配置 (原DeepLeaper配置合併到DL)
+    ("DL", "TikTok Shop ID - CPS"): 1.0,  # 1.0表示1%
+    ("DL", "Shopee TH - CPS"): 2.0,  # 您示例中的2%
+    ("DL", "Shopee MY - CPS"): 2.0,  # 您示例中的2%
+    ("DL", "Shopee PH - CPS"): 2.5,  # 您示例中的2.5%
+    ("DL", "Shopee ID (Media Buyers) - CPS"): 1.5,  # 您示例中的3%
+    ("DL", "Shopee VN - CPS"): 3.0,  # 您示例中的3%
     
     # ByteC Partner配置
     ("ByteC", "Shopee ID (Media Buyers) - CPS"): 1.0,  # 默认1%
@@ -255,6 +274,14 @@ PUB_COMMISSION_RATE_MAPPING = {
     ("MP", "Shopee MY - CPS"): 1.0,  # 默认1%
     ("MP", "Shopee VN - CPS"): 1.0,  # 默认1%
     ("MP", "TikTok Shop ID - CPS"): 1.0,  # 默认1%
+    
+    # GX Partner配置
+    ("GX", "Shopee ID (Media Buyers) - CPS"): 1.0,  # 默认1%
+    ("GX", "Shopee PH - CPS"): 1.0,  # 默认1%
+    ("GX", "Shopee TH - CPS"): 1.0,  # 默认1%
+    ("GX", "Shopee MY - CPS"): 1.0,  # 默认1%
+    ("GX", "Shopee VN - CPS"): 1.0,  # 默认1%
+    ("GX", "TikTok Shop ID - CPS"): 1.0,  # 默认1%
     
     # 其他组合的默认值在get_pub_commission_rate函数中处理
 }
@@ -288,11 +315,12 @@ COMPANY_APIS = {
 # 支持单个API或多个API的配置
 PARTNER_API_MAPPING = {
     "RAMPUP": ["involve_asia"],                  # RAMPUP 使用 involve_asia 平台
-    "DeepLeaper": ["involve_asia"],              # DeepLeaper 使用 involve_asia 平台
+    "DL": ["involve_asia"],                      # DL 使用 involve_asia 平台
     "ByteC": ["involve_asia"],                   # ByteC 使用 involve_asia 平台
     "TestPartner": ["involve_asia"],             # TestPartner 使用 involve_asia 平台
     "MKK": ["involve_asia"],                     # MKK 使用 involve_asia 平台
-    "MP": ["involve_asia"]                       # MP 使用 involve_asia 平台
+    "MP": ["involve_asia"],                      # MP 使用 involve_asia 平台
+    "GX": ["involve_asia"]                       # GX 使用 involve_asia 平台
 }
 
 # 默认 API 平台（当 Partner 不在映射中时使用）
@@ -433,8 +461,19 @@ def match_source_to_partner(source_name):
     return source_name
 
 def get_partner_email_config(partner_name):
-    """获取Partner的邮件配置"""
-    partner_config = PARTNER_SOURCES_MAPPING.get(partner_name, {})
+    """获取Partner的邮件配置 - 支持别名映射"""
+    # Partner别名映射 - 用于邮件配置查找
+    partner_aliases = {
+        'DeepLeaper': 'DL',
+        'DEEPLEAPER': 'DL',
+        'deepleaper': 'DL'
+    }
+    
+    # 检查是否需要别名映射
+    actual_partner = partner_aliases.get(partner_name, partner_name)
+    
+    # 获取配置
+    partner_config = PARTNER_SOURCES_MAPPING.get(actual_partner, {})
     return {
         'enabled': partner_config.get('email_enabled', False),
         'recipients': partner_config.get('email_recipients', [])
@@ -1068,6 +1107,21 @@ INPUT_DATA_AGENT_MAX_BATCH_SIZE = 10             # 批量处理最大文件数
 INPUT_DATA_OUTPUT_TEMPLATE = "Processed_{original_filename}_{timestamp}.xlsx"
 
 # =============================================================================
+# Reporter Agent 報表模式配置
+# =============================================================================
+
+# 📊 簡化報表模式開關
+SIMPLIFIED_REPORT_MODE = True  # True: 只顯示總表，False: 顯示各source分頁和摘要
+SHOW_INDIVIDUAL_SOURCE_SHEETS = False  # 是否顯示各individual source的分頁（當SIMPLIFIED_REPORT_MODE=False時生效）
+SHOW_REPORT_SUMMARY_SHEET = False      # 是否顯示Report Summary分頁
+SHOW_EMAIL_REPORT_SUMMARY = False      # 是否顯示Email Report Summary
+
+# 📊 Sources相關功能開關
+SHOW_SOURCES_STATISTICS = False        # 是否在報表和郵件中顯示Sources統計信息
+SHOW_SOURCES_INFO_IN_REPORT = False    # 是否在報表中顯示Sources信息
+SHOW_SOURCES_INFO_IN_EMAIL = False     # 是否在郵件中顯示Sources信息
+
+# =============================================================================
 # Reporter Agent 標準欄位配置
 # =============================================================================
 
@@ -1250,5 +1304,68 @@ def build_input_data_agent_command_args(import_file=None, **kwargs):
         cmd_args.extend(['--days-ago', str(args['days_ago'])])
     
     return cmd_args
+
+# =============================================================================
+# Sources相关功能控制函数
+# =============================================================================
+
+def should_show_sources_statistics():
+    """是否顯示Sources統計信息"""
+    global SIMPLIFIED_REPORT_MODE, SHOW_SOURCES_STATISTICS
+    if SIMPLIFIED_REPORT_MODE:
+        return False  # 簡化模式下不顯示Sources統計
+    return SHOW_SOURCES_STATISTICS
+
+def should_show_sources_info_in_report():
+    """是否在報表中顯示Sources信息"""
+    global SIMPLIFIED_REPORT_MODE, SHOW_SOURCES_INFO_IN_REPORT
+    if SIMPLIFIED_REPORT_MODE:
+        return False  # 簡化模式下不顯示Sources信息
+    return SHOW_SOURCES_INFO_IN_REPORT
+
+def should_show_sources_info_in_email():
+    """是否在郵件中顯示Sources信息"""
+    global SIMPLIFIED_REPORT_MODE, SHOW_SOURCES_INFO_IN_EMAIL
+    if SIMPLIFIED_REPORT_MODE:
+        return False  # 簡化模式下不顯示Sources信息
+    return SHOW_SOURCES_INFO_IN_EMAIL
+
+def is_simplified_report_mode():
+    """是否啟用簡化報表模式（只顯示總表）"""
+    global SIMPLIFIED_REPORT_MODE
+    return SIMPLIFIED_REPORT_MODE
+
+def should_show_individual_source_sheets():
+    """是否顯示各individual source的分頁"""
+    global SIMPLIFIED_REPORT_MODE, SHOW_INDIVIDUAL_SOURCE_SHEETS
+    if SIMPLIFIED_REPORT_MODE:
+        return False  # 簡化模式下不顯示individual source sheets
+    return SHOW_INDIVIDUAL_SOURCE_SHEETS
+
+def should_show_report_summary_sheet():
+    """是否顯示Report Summary分頁"""
+    global SIMPLIFIED_REPORT_MODE, SHOW_REPORT_SUMMARY_SHEET
+    if SIMPLIFIED_REPORT_MODE:
+        return False  # 簡化模式下不顯示Report Summary
+    return SHOW_REPORT_SUMMARY_SHEET
+
+def should_show_email_report_summary():
+    """是否顯示Email Report Summary"""
+    global SIMPLIFIED_REPORT_MODE, SHOW_EMAIL_REPORT_SUMMARY
+    if SIMPLIFIED_REPORT_MODE:
+        return False  # 簡化模式下不顯示Email Report Summary
+    return SHOW_EMAIL_REPORT_SUMMARY
+
+def get_reporter_agent_mode_config():
+    """獲取Reporter Agent報表模式配置"""
+    return {
+        'simplified_mode': SIMPLIFIED_REPORT_MODE,
+        'show_individual_source_sheets': should_show_individual_source_sheets(),
+        'show_report_summary_sheet': should_show_report_summary_sheet(),
+        'show_email_report_summary': should_show_email_report_summary(),
+        'show_sources_statistics': should_show_sources_statistics(),
+        'show_sources_info_in_report': should_show_sources_info_in_report(),
+        'show_sources_info_in_email': should_show_sources_info_in_email()
+    }
 
 # =============================================================================

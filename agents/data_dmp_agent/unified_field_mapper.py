@@ -97,7 +97,9 @@ class UnifiedFieldMapper:
                 # 新增字段
                 'Custom Type': 'string',
                 'USD Sale Amount': 'decimal',
-                'USD Reward': 'decimal'
+                'USD Reward': 'decimal',
+                'Partner': 'string',  # Partner字段
+                'Source': 'string'    # Source字段
         }
     
     def map_dataframe_to_unified_fields(self, df: pd.DataFrame, field_mappings: Dict[str, str]) -> pd.DataFrame:
@@ -125,15 +127,82 @@ class UnifiedFieldMapper:
             source_field = field_mappings.get(unified_field)
             
             if source_field and source_field in df.columns:
-                # 如果源欄位存在，直接映射
-                unified_df[unified_field] = df[source_field]
-                logger.debug(f"映射欄位: {source_field} -> {unified_field}")
+                # 特殊处理Conversion ID以保持精度，避免科学计数法
+                if unified_field == 'Conversion ID':
+                    # 智能选择：优先使用Action ID，如果为空则使用Order ID
+                    if 'Action ID' in df.columns and 'Order ID' in df.columns:
+                        def smart_conversion_id(row):
+                            action_id = row.get('Action ID')
+                            order_id = row.get('Order ID')
+                            advertiser = row.get('Advertiser', '')
+                            
+                            # 特殊处理DN_BM：Action ID=30是无效值，直接使用Order ID
+                            if '(2)DN_BM' in str(advertiser):
+                                if pd.notna(order_id) and str(order_id).strip() and str(order_id) != 'nan':
+                                    try:
+                                        # 处理科学计数法
+                                        if 'E' in str(order_id).upper():
+                                            return str(int(float(order_id)))
+                                        else:
+                                            return str(order_id)
+                                    except:
+                                        return str(order_id)
+                                else:
+                                    return '0'
+                            
+                            # 其他情况：优先使用Action ID，如果有值的话
+                            if pd.notna(action_id) and str(action_id).strip() and str(action_id) != 'nan':
+                                try:
+                                    return str(int(float(action_id)))
+                                except:
+                                    return str(action_id)
+                            
+                            # 如果Action ID为空，使用Order ID
+                            elif pd.notna(order_id) and str(order_id).strip() and str(order_id) != 'nan':
+                                try:
+                                    # 处理科学计数法
+                                    if 'E' in str(order_id).upper():
+                                        return str(int(float(order_id)))
+                                    else:
+                                        return str(order_id)
+                                except:
+                                    return str(order_id)
+                            
+                            return '0'  # 如果都为空，返回0
+                        
+                        unified_df[unified_field] = df.apply(smart_conversion_id, axis=1)
+                        logger.info(f"🔢 Conversion ID智能映射: 优先Action ID，备用Order ID，DN_BM特殊处理 -> {unified_field}")
+                    else:
+                        # 如果没有Action ID和Order ID列，按原逻辑处理
+                        unified_df[unified_field] = df[source_field].apply(
+                            lambda x: str(int(float(x))) if pd.notna(x) and str(x).replace('.', '').replace('E', '').replace('+', '').replace('-', '').isdigit() else str(x)
+                        )
+                        logger.info(f"🔢 Conversion ID字段映射: {source_field} -> {unified_field}, 处理科学计数法格式")
+                elif unified_field == 'Partner':  # 特殊调试Partner字段
+                    unified_df[unified_field] = df[source_field]
+                    logger.info(f"🔍 Partner字段映射: {source_field} -> {unified_field}, 前5个值: {df[source_field].head().tolist()}")
+                else:
+                    # 如果源欄位存在，直接映射
+                    unified_df[unified_field] = df[source_field]
+                    logger.debug(f"映射欄位: {source_field} -> {unified_field}")
             else:
                 # 如果源欄位不存在或為空，添加空的 unified field，保持原始行數
                 field_type = self.field_types.get(unified_field, 'string')
                 default_value = self._get_default_value(field_type)
                 unified_df[unified_field] = [default_value] * len(df)
-                logger.debug(f"添加空欄位: {unified_field} (類型: {field_type})")
+                if unified_field == 'Partner':  # 特殊调试Partner字段
+                    logger.info(f"🔍 Partner字段创建空值: source_field='{source_field}', 在df中存在: {source_field in df.columns if source_field else False}")
+                else:
+                    logger.debug(f"添加空欄位: {unified_field} (類型: {field_type})")
+        
+        # 保留额外的重要字段（如动态生成的Partner和Source字段）
+        important_extra_fields = ['Partner', 'Source']
+        for field in important_extra_fields:
+            if field in df.columns and field not in unified_df.columns:
+                unified_df[field] = df[field]
+                logger.info(f"保留額外重要欄位: {field}, 前5个值: {df[field].head().tolist()}")
+            elif field in df.columns and field in unified_df.columns:
+                logger.info(f"字段 {field} 已存在于unified_df中，当前值: {unified_df[field].head().tolist()}")
         
         # 添加衍生字段到DataFrame（即使Google Sheets中沒有配置）
         # 移除Custom Type字段，只保留USD相關字段
@@ -328,18 +397,46 @@ class UnifiedFieldMapper:
             # 1. USD Sale Amount <- Local Sale Amount 做IDR到USD轉換
             if 'USD Sale Amount' in unified_df.columns and 'Local Sale Amount' in unified_df.columns:
                 logger.info("開始處理USD Sale Amount貨幣轉換")
-                unified_df['USD Sale Amount'] = unified_df['Local Sale Amount'].apply(
-                    lambda x: currency_converter.convert_idr_to_usd(float(x)) if pd.notna(x) and x != '' else 0.0
-                )
-                logger.debug("完成USD Sale Amount轉換：IDR -> USD")
+                def convert_idr_to_usd_safe(x):
+                    try:
+                        if pd.isna(x) or x == '' or x == 0:
+                            return 0.0
+                        idr_amount = float(x)
+                        usd_amount = currency_converter.convert_idr_to_usd(idr_amount)
+                        # 保留小數點後2位
+                        return round(usd_amount, 2)
+                    except Exception as e:
+                        logger.warning(f"轉換失敗: {x} -> {e}")
+                        return 0.0
+                
+                unified_df['USD Sale Amount'] = unified_df['Local Sale Amount'].apply(convert_idr_to_usd_safe)
+                
+                # 記錄轉換統計
+                total_idr = unified_df['Local Sale Amount'].sum()
+                total_usd = unified_df['USD Sale Amount'].sum()
+                logger.info(f"💰 USD Sale Amount轉換完成: IDR {total_idr:,.0f} -> USD ${total_usd:,.2f}")
             
             # 2. USD Reward <- Local Reward 做IDR到USD轉換
             if 'USD Reward' in unified_df.columns and 'Local Reward' in unified_df.columns:
                 logger.info("開始處理USD Reward貨幣轉換")
-                unified_df['USD Reward'] = unified_df['Local Reward'].apply(
-                    lambda x: currency_converter.convert_idr_to_usd(float(x)) if pd.notna(x) and x != '' else 0.0
-                )
-                logger.debug("完成USD Reward轉換：IDR -> USD")
+                def convert_reward_idr_to_usd_safe(x):
+                    try:
+                        if pd.isna(x) or x == '' or x == 0:
+                            return 0.0
+                        idr_amount = float(x)
+                        usd_amount = currency_converter.convert_idr_to_usd(idr_amount)
+                        # 保留小數點後2位
+                        return round(usd_amount, 2)
+                    except Exception as e:
+                        logger.warning(f"轉換失敗: {x} -> {e}")
+                        return 0.0
+                
+                unified_df['USD Reward'] = unified_df['Local Reward'].apply(convert_reward_idr_to_usd_safe)
+                
+                # 記錄轉換統計
+                total_reward_idr = unified_df['Local Reward'].sum()
+                total_reward_usd = unified_df['USD Reward'].sum()
+                logger.info(f"💰 USD Reward轉換完成: IDR {total_reward_idr:,.0f} -> USD ${total_reward_usd:,.2f}")
             
             return unified_df
             
@@ -351,16 +448,42 @@ class UnifiedFieldMapper:
                 # 1. USD Sale Amount <- Local Sale Amount 做IDR到USD轉換 (固定汇率)
                 if 'USD Sale Amount' in unified_df.columns and 'Local Sale Amount' in unified_df.columns:
                     logger.info("使用固定汇率处理USD Sale Amount转换 (1 USD = 15000 IDR)")
-                    unified_df['USD Sale Amount'] = unified_df['Local Sale Amount'].apply(
-                        lambda x: float(x) / 15000.0 if pd.notna(x) and x != '' and x != 0 else 0.0
-                    )
+                    def fallback_convert_sale_amount(x):
+                        try:
+                            if pd.isna(x) or x == '' or x == 0:
+                                return 0.0
+                            idr_amount = float(x)
+                            usd_amount = idr_amount / 15000.0  # 固定匯率 1 USD = 15000 IDR
+                            return round(usd_amount, 2)  # 保留小數點後2位
+                        except:
+                            return 0.0
+                    
+                    unified_df['USD Sale Amount'] = unified_df['Local Sale Amount'].apply(fallback_convert_sale_amount)
+                    
+                    # 記錄轉換統計
+                    total_idr = unified_df['Local Sale Amount'].sum()
+                    total_usd = unified_df['USD Sale Amount'].sum()
+                    logger.info(f"💰 固定匯率USD Sale Amount轉換: IDR {total_idr:,.0f} -> USD ${total_usd:,.2f}")
                 
                 # 2. USD Reward <- Local Reward 做IDR到USD轉換 (固定汇率)
                 if 'USD Reward' in unified_df.columns and 'Local Reward' in unified_df.columns:
                     logger.info("使用固定汇率处理USD Reward转换 (1 USD = 15000 IDR)")
-                    unified_df['USD Reward'] = unified_df['Local Reward'].apply(
-                        lambda x: float(x) / 15000.0 if pd.notna(x) and x != '' and x != 0 else 0.0
-                    )
+                    def fallback_convert_reward(x):
+                        try:
+                            if pd.isna(x) or x == '' or x == 0:
+                                return 0.0
+                            idr_amount = float(x)
+                            usd_amount = idr_amount / 15000.0  # 固定匯率 1 USD = 15000 IDR
+                            return round(usd_amount, 2)  # 保留小數點後2位
+                        except:
+                            return 0.0
+                    
+                    unified_df['USD Reward'] = unified_df['Local Reward'].apply(fallback_convert_reward)
+                    
+                    # 記錄轉換統計
+                    total_reward_idr = unified_df['Local Reward'].sum()
+                    total_reward_usd = unified_df['USD Reward'].sum()
+                    logger.info(f"💰 固定匯率USD Reward轉換: IDR {total_reward_idr:,.0f} -> USD ${total_reward_usd:,.2f}")
                 
                 logger.info("✅ 固定汇率回退转换完成")
             except Exception as fallback_error:
@@ -387,6 +510,8 @@ class UnifiedFieldMapper:
                 
                 if transform_type == 'currency':
                     df[field] = self._transform_currency(df[field], config)
+                elif transform_type == 'currency_auto':
+                    df[field] = self._transform_currency_auto(df[field], config)
                 elif transform_type == 'date':
                     df[field] = self._transform_date(df[field], config)
                 elif transform_type == 'percentage':
@@ -414,10 +539,86 @@ class UnifiedFieldMapper:
             logger.warning(f"貨幣轉換失敗: {e}")
             return series
     
+    def _transform_currency_auto(self, series: pd.Series, config: Dict[str, Any]) -> pd.Series:
+        """
+        智能貨幣轉換：自動檢測格式並轉換為USD
+        支持檢測 Rpxxxx 格式的印尼盾並自動轉換
+        """
+        try:
+            # 導入貨幣轉換器
+            currency_converter = None
+            
+            # 多種導入方式，確保能夠成功導入
+            try:
+                from .currency_converter import currency_converter
+                logger.debug("✅ 直接導入貨幣轉換器成功")
+            except ImportError:
+                try:
+                    import agents.data_dmp_agent.currency_converter as cc_module
+                    currency_converter = cc_module.currency_converter
+                    logger.debug("✅ 模塊導入貨幣轉換器成功")
+                except ImportError:
+                    logger.warning("⚠️ 無法導入貨幣轉換器，將使用固定匯率")
+                    currency_converter = None
+            
+            if currency_converter is None:
+                # 創建一個簡單的回退轉換器
+                class SimpleCurrencyConverter:
+                    def convert_to_usd(self, value):
+                        try:
+                            # 簡單的字符串檢測
+                            if isinstance(value, str) and 'Rp' in value:
+                                # 提取數字並使用固定匯率轉換
+                                import re
+                                numbers = re.findall(r'[\d,]+\.?\d*', value)
+                                if numbers:
+                                    amount = float(numbers[0].replace(',', ''))
+                                    return round(amount / 15000.0, 2)  # 固定匯率
+                            
+                            # 否則嘗試轉換為數字
+                            return float(value) if value else 0.0
+                        except:
+                            return 0.0
+                
+                currency_converter = SimpleCurrencyConverter()
+            
+            # 應用智能轉換
+            def smart_convert(value):
+                try:
+                    if pd.isna(value) or value == '':
+                        return 0.0
+                    
+                    # 使用貨幣轉換器的智能轉換功能
+                    usd_amount = currency_converter.convert_to_usd(value)
+                    return round(usd_amount, 2)
+                    
+                except Exception as e:
+                    logger.debug(f"轉換失敗 {value}: {e}")
+                    return 0.0
+            
+            # 應用轉換到整個 series
+            converted_series = series.apply(smart_convert)
+            
+            # 統計轉換結果
+            non_zero_count = (converted_series > 0).sum()
+            total_amount = converted_series.sum()
+            logger.info(f"💰 智能貨幣轉換完成: {non_zero_count} 條記錄，總金額 ${total_amount:,.2f} USD")
+            
+            return converted_series
+            
+        except Exception as e:
+            logger.error(f"❌ 智能貨幣轉換失敗: {e}")
+            # 回退到基本的數值轉換
+            try:
+                return pd.to_numeric(series, errors='coerce').fillna(0.0)
+            except:
+                return pd.Series([0.0] * len(series), index=series.index)
+    
     def _transform_date(self, series: pd.Series, config: Dict[str, Any]) -> pd.Series:
         """轉換日期欄位"""
         try:
             date_format = config.get('format', '%Y-%m-%d %H:%M:%S')  # 支持帶時間的格式
+            remove_timezone = config.get('remove_timezone', False)  # 是否移除時區信息
             
             # 嘗試不同的日期格式
             try:
@@ -426,6 +627,11 @@ class UnifiedFieldMapper:
             except:
                 # 如果失敗，使用pandas的智能解析
                 series = pd.to_datetime(series, errors='coerce')
+            
+            # 如果需要移除時區信息（用於Excel兼容性）
+            if remove_timezone and series.dt.tz is not None:
+                series = series.dt.tz_localize(None)
+                logger.info(f"已移除時區信息以兼容Excel格式")
             
             return series
         except Exception as e:

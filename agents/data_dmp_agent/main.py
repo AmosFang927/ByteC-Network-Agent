@@ -335,7 +335,7 @@ class DMPAgent:
                 elif field in ['Conversion ID']:
                     unified_df[field] = df.get('conversion_id', 'N/A')
                 elif field == 'Partner':
-                    unified_df[field] = df.get('partner', 'Unknown')
+                    unified_df[field] = df.get('Partner', df.get('partner', 'Unknown'))
                 elif field == 'Platform':
                     unified_df[field] = df.get('platform', 'Unknown')
                 else:
@@ -498,7 +498,7 @@ class DMPAgent:
                     })
                     return result
                     
-            elif platform == 'leads_adn':
+            elif platform == 'leads_adn' or platform == 'LEADS_ADN':
                 logger.info("🎯 使用专门的LeadsADN数据处理器...")
                 
                 try:
@@ -540,7 +540,30 @@ class DMPAgent:
                 output_path = Path("output") / output_filename
                 output_path.parent.mkdir(exist_ok=True)
                 
+                # 移除不需要呈现的字段（应用config.py配置）
+                from config import DMP_PASSTHROUGH_REMOVE_COLUMNS
+                columns_to_remove = DMP_PASSTHROUGH_REMOVE_COLUMNS
+                existing_columns_to_remove = [col for col in columns_to_remove if col in processed_df.columns]
+                
+                if existing_columns_to_remove:
+                    processed_df = processed_df.drop(columns=existing_columns_to_remove)
+                    logger.info(f"🗑️ 移除不需要呈現的字段: {existing_columns_to_remove}")
+                
+                logger.info(f"📊 清理後最終欄位數: {len(processed_df.columns)}")
+                logger.info(f"📋 最終保留欄位: {list(processed_df.columns)}")
+                
                 # 保存处理后的数据
+                logger.info(f"🔍 最终Excel保存前Partner字段检查: {'Partner' in processed_df.columns}, 非空值: {processed_df['Partner'].notna().sum() if 'Partner' in processed_df.columns else 0}")
+                
+                # 确保Partner字段是字符串类型以正确保存到Excel
+                if 'Partner' in processed_df.columns:
+                    logger.info(f"🔍 Partner字段转换前值: {processed_df['Partner'].head().tolist()}")
+                    processed_df['Partner'] = processed_df['Partner'].astype(str)
+                    logger.info(f"🔧 强制Partner字段为字符串类型: {processed_df['Partner'].dtype}")
+                    logger.info(f"🔍 Partner字段转换后值: {processed_df['Partner'].head().tolist()}")
+                
+                # 清理DataFrame数据以避免Excel写入错误
+                processed_df = self._clean_dataframe_for_excel(processed_df)
                 processed_df.to_excel(output_path, index=False)
                 logger.info(f"✅ LeadsADN处理完成，输出文件: {output_path}")
                 
@@ -565,15 +588,23 @@ class DMPAgent:
                 if file_extension in ['.xlsx', '.xls']:
                     df = pd.read_excel(file_path)
                 elif file_extension == '.csv':
-                    # 嘗試不同編碼
+                    # 嘗試不同編碼和宽松的解析参数
                     encodings = ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252', 'gbk']
                     df = None
                     for encoding in encodings:
                         try:
-                            df = pd.read_csv(file_path, encoding=encoding)
+                            # 使用更宽松的CSV读取参数来处理格式错误
+                            df = pd.read_csv(file_path, 
+                                           encoding=encoding,
+                                           on_bad_lines='skip',  # 跳过有问题的行
+                                           engine='python',      # 使用python引擎
+                                           quoting=1)            # 使用QUOTE_ALL
                             logger.info(f"成功使用 {encoding} 編碼讀取CSV檔案")
                             break
                         except (UnicodeDecodeError, UnicodeError):
+                            continue
+                        except Exception as e:
+                            logger.info(f"使用 {encoding} 編碼讀取失敗: {e}")
                             continue
                     
                     if df is None:
@@ -670,7 +701,8 @@ class DMPAgent:
                     'SHOPEE': 'shopee',
                     'TIKTOK_SHOP': 'tiktok_shop',
                     'LS_MB': 'linkshare',
-                    'LS_BM': 'linkshare'
+                    'LS_BM': 'linkshare',
+                    'LEADS_ADN': 'leads_adn'
                 }
                 
                 mapping_platform = platform_mapping.get(platform, platform.lower())
@@ -1128,6 +1160,7 @@ class DMPAgent:
             output_file_path = f"output/DMP_temp_ByteC_{timestamp}.xlsx"
             
             with pd.ExcelWriter(output_file_path, engine='openpyxl') as writer:
+                df = self._clean_dataframe_for_excel(df)
                 df.to_excel(writer, sheet_name='Data', index=False)
             
             logger.info(f"✅ Reporter格式DMP temp文件生成完成: {output_file_path}")
@@ -1212,6 +1245,7 @@ class DMPAgent:
                 logger.info("✅ 已確保Conversion ID保持為字符串格式")
             
             with pd.ExcelWriter(passthrough_file, engine='openpyxl') as writer:
+                processed_df = self._clean_dataframe_for_excel(processed_df)
                 processed_df.to_excel(writer, sheet_name='Data', index=False)
             
             logger.info(f"✅ 成功更新Passthrough文件，現在包含LS_BM處理後的數據")
@@ -1259,6 +1293,7 @@ class DMPAgent:
             
             # 寫入Passthrough Excel文件
             with pd.ExcelWriter(passthrough_file, engine='openpyxl', mode='w') as writer:
+                processed_df = self._clean_dataframe_for_excel(processed_df)
                 processed_df.to_excel(writer, sheet_name='Data', index=False)
             
             logger.info(f"✅ 成功更新DN_BM Passthrough文件，現在包含unified fields")
@@ -1323,6 +1358,7 @@ class DMPAgent:
                 logger.info("✅ 已確保Conversion ID保持為字符串格式")
             
             with pd.ExcelWriter(passthrough_file, engine='openpyxl') as writer:
+                processed_df = self._clean_dataframe_for_excel(processed_df)
                 processed_df.to_excel(writer, sheet_name='Data', index=False)
             
             logger.info(f"✅ 成功更新Passthrough文件，現在包含LeadsADN處理後的數據")
@@ -1336,16 +1372,17 @@ class DMPAgent:
     async def initialize(self, skip_db_check: bool = False):
         """初始化DMP代理"""
         logger.info("🚀 正在初始化DMP-Agent...")
+        logger.info(f"🔍 skip_db_check={skip_db_check}")
         
         try:
-            # 初始化數據庫連接
-            await self.db_manager.init_pool()
-            
-            # 如果跳過數據庫檢查（如file模式），則不執行健康檢查
+            # 如果跳過數據庫檢查（如file/passthrough模式），則完全跳過數據庫連接
             if skip_db_check:
-                logger.info("📁 文件模式: 跳過數據庫健康檢查")
-                logger.info("✅ DMP-Agent初始化成功 (文件模式)")
+                logger.info("📁 Passthrough模式: 完全跳過數據庫連接和健康檢查")
+                logger.info("✅ DMP-Agent初始化成功 (Passthrough模式)")
                 return
+            
+            # 只有在非passthrough模式才初始化數據庫連接
+            await self.db_manager.init_pool()
             
             # 檢查數據庫健康狀態
             health = await self.db_manager.health_check()
@@ -1684,6 +1721,7 @@ class DMPAgent:
                         output_file_path = f"output/DMP_temp_{platform}_{timestamp}.xlsx"
                     
                     with pd.ExcelWriter(output_file_path, engine='openpyxl') as writer:
+                        df = self._clean_dataframe_for_excel(df)
                         df.to_excel(writer, sheet_name='Data', index=False)
                     
                     # 🔧 Passthrough 模式：查找並更新對應的 Passthrough Excel 文件
@@ -1716,6 +1754,7 @@ class DMPAgent:
                                 
                                 # 用 mockup 調整後的數據覆蓋原始 Passthrough 文件
                                 with pd.ExcelWriter(passthrough_file, engine='openpyxl') as writer:
+                                    df = self._clean_dataframe_for_excel(df)
                                     df.to_excel(writer, sheet_name='Data', index=False)
                                 
                                 logger.info(f"✅ 成功更新 Passthrough 文件，現在包含 mockup 調整後的金額")
@@ -1942,6 +1981,62 @@ class DMPAgent:
         except Exception as e:
             logger.error(f"❌ 最終摘要生成失敗: {e}")
     
+    def _clean_dataframe_for_excel(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        清理DataFrame数据以避免Excel写入错误
+        - 清理过长的字符串
+        - 移除特殊字符
+        - 处理换行符和控制字符
+        """
+        try:
+            cleaned_df = df.copy()
+            
+            # 对所有字符串列进行清理
+            for col in cleaned_df.columns:
+                if cleaned_df[col].dtype == 'object':
+                    cleaned_df[col] = cleaned_df[col].apply(self._clean_cell_value)
+            
+            logger.debug(f"✅ DataFrame清理完成，处理了 {len(cleaned_df.columns)} 列")
+            return cleaned_df
+            
+        except Exception as e:
+            logger.error(f"❌ DataFrame清理失败: {e}")
+            return df
+    
+    def _clean_cell_value(self, value):
+        """
+        清理单个单元格的值
+        """
+        try:
+            if pd.isna(value) or value is None:
+                return ""
+            
+            # 转换为字符串
+            str_value = str(value)
+            
+            # 移除控制字符和特殊字符
+            import re
+            # 移除控制字符 (0x00-0x1F 和 0x7F-0x9F)
+            str_value = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', str_value)
+            
+            # 替换换行符为空格
+            str_value = str_value.replace('\n', ' ').replace('\r', ' ')
+            
+            # 限制长度（Excel单元格最大长度为32767字符）
+            max_length = 32000  # 留一些缓冲
+            if len(str_value) > max_length:
+                str_value = str_value[:max_length] + "..."
+                logger.debug(f"⚠️ 单元格内容过长，已截断到 {max_length} 字符")
+            
+            # 移除前后空格
+            str_value = str_value.strip()
+            
+            return str_value
+            
+        except Exception as e:
+            logger.warning(f"⚠️ 清理单元格值失败: {e}, 返回空字符串")
+            return ""
+
     async def _update_passthrough_file_with_mockup(self, processed_data: List[Dict], csv_file_path: str):
         """
         更新對應的 Passthrough Excel 文件，用 mockup 調整後的數據覆蓋原始金額
@@ -2062,7 +2157,7 @@ class DMPAgent:
             # 選擇 Passthrough 格式需要的欄位
             passthrough_columns = [
                 'Conversion ID', 'Datetime Conversion', 'Advertiser', 'Order ID', 
-                'Sale Amount (USD)', 'Publisher Sub ID 1', 'Status', 
+                'Sale Amount (USD)', 'Status', 'Publisher Sub ID 1', 
                 'Publisher Sub ID 2', 'Publisher Sub ID 3', 'Publisher Sub ID 4', 
                 'Publisher Sub ID 5', 'Advertiser Sub ID 2', 'Advertiser Sub ID 3', 
                 'Advertiser Sub ID 4', 'Advertiser Sub ID 5', 'Partner', 'Source'
@@ -2076,6 +2171,7 @@ class DMPAgent:
             
             # 用 mockup 調整後的數據覆蓋原始 Passthrough 文件
             with pd.ExcelWriter(passthrough_file, engine='openpyxl') as writer:
+                final_df = self._clean_dataframe_for_excel(final_df)
                 final_df.to_excel(writer, sheet_name='Data', index=False)
             
             logger.info(f"✅ 成功更新 Passthrough 文件，現在包含 mockup 調整後的金額")
@@ -2105,7 +2201,21 @@ class DMPAgent:
         import re
         import config
         
+        # 🔧 修復：優先匹配 DeepLeaper，因為它包含更廣泛的匹配規則
+        # 先檢查 DeepLeaper 的匹配規則
+        deepleaper_config = config.PARTNER_SOURCES_MAPPING.get('DeepLeaper', {})
+        deepleaper_pattern = deepleaper_config.get('pattern', '')
+        if deepleaper_pattern:
+            try:
+                if re.search(deepleaper_pattern, source_str):
+                    return 'DeepLeaper'
+            except re.error:
+                pass
+        
+        # 然後檢查其他 Partner 的匹配規則
         for partner_name, partner_config in config.PARTNER_SOURCES_MAPPING.items():
+            if partner_name == 'DeepLeaper':  # 跳過已經檢查過的 DeepLeaper
+                continue
             pattern = partner_config.get('pattern', '')
             if pattern:
                 try:
@@ -2144,8 +2254,14 @@ class DMPAgent:
                 # 創建處理後的轉化數據副本
                 processed_conv = conv.copy()
                 
-                # 獲取Partner信息 - 支持大小寫不敏感
-                partner = conv.get('Partner') or conv.get('partner', platform)
+                # 🔧 修復：重新根據 Publisher Sub ID 1 和 config.py 規則分配 Partner
+                partner = self._classify_partner_by_source(conv.get('Publisher Sub ID 1', ''))
+                if not partner or partner == 'Unknown':
+                    # 如果無法確定Partner，使用原有邏輯
+                    partner = conv.get('Partner') or conv.get('partner', platform)
+                
+                # 更新 processed_conv 中的 Partner 字段
+                processed_conv['Partner'] = partner
                 
                 # 根據Partner獲取特定的mockup倍數
                 if partner and partner.upper() in ['RAMPUP', 'DEEPLEAPER', 'TESTPARTNER', 'MKK', 'MP', 'FTK', 'BYTEC']:
@@ -2336,7 +2452,8 @@ class DMPAgent:
                     'SHOPEE': 'shopee',
                     'TIKTOK_SHOP': 'tiktok_shop',
                     'LS_MB': 'linkshare',
-                    'LS_BM': 'linkshare'
+                    'LS_BM': 'linkshare',
+                    'LEADS_ADN': 'leads_adn'
                 }
                 
                 mapping_platform = platform_mapping.get(platform, platform.lower())
@@ -2394,8 +2511,12 @@ class DMPAgent:
                     # 🔍 如果沒有匹配到具體Partner，默認歸類為ByteC
                     return 'ByteC'
                 
-                # 優先使用文件中已有的 Partner 欄位，如果不存在則重新計算
-                partner = row.get('Partner', classify_partner(source))
+                # 如果Partner為Unknown或者空值，重新計算Partner
+                existing_partner = row.get('Partner', '')
+                if existing_partner in ['Unknown', '', None] or pd.isna(existing_partner):
+                    partner = classify_partner(source)
+                else:
+                    partner = existing_partner
                 
                 conversion = {
                     'conversion_id': row.get('Conversion ID'),
@@ -2980,6 +3101,11 @@ async def main():
                        help='強制指定平台類型 (AT_BM, IA_BM, IA_OT, IA_MB)')
     
     args = parser.parse_args()
+    
+    # 🔧 修復: 當有 --import 參數時，自動設置 data_source 為 'file'
+    if args.import_files:
+        args.data_source = 'file'
+        logger.info(f"🔧 檢測到 --import 參數，自動設置 data_source='{args.data_source}'")
     
     # 參數驗證
     if args.delete:

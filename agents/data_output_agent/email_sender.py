@@ -324,8 +324,12 @@ class EmailSender:
         # 从Excel文件中计算真实的销售总额
         real_total_amount = self._calculate_sales_amount_from_excel(file_path)
         
-        # 计算Sources统计信息
-        sources_statistics = self._calculate_sources_statistics_from_excel(file_path)
+        # 计算Sources统计信息 - 根據配置決定是否計算
+        from config import should_show_sources_info_in_email
+        if should_show_sources_info_in_email():
+            sources_statistics = self._calculate_sources_statistics_from_excel(file_path)
+        else:
+            sources_statistics = []
         
         # 使用统一Summary格式化器生成状态统计
         try:
@@ -1050,13 +1054,16 @@ class EmailSender:
                     feishu_section += f'<li><a href="{file_info["url"]}">{file_info["filename"]}</a></li>'
             feishu_section += "</ul>"
         
-        # 准备Sources列表 - 使用sources_statistics生成
-        sources_list = self._generate_sources_list(sources_statistics)
-        if not sources_list or sources_list == "无":
-            sources_list = "N/A"
-        
-        # 生成Sources统计HTML
-        sources_statistics_html = self._generate_sources_statistics_html(sources_statistics)
+        # 准备Sources列表 - 根據配置決定是否生成
+        from config import should_show_sources_info_in_email
+        if should_show_sources_info_in_email():
+            sources_list = self._generate_sources_list(sources_statistics)
+            if not sources_list or sources_list == "无":
+                sources_list = "N/A"
+            sources_statistics_html = self._generate_sources_statistics_html(sources_statistics)
+        else:
+            sources_list = ""  # 完全移除Sources信息
+            sources_statistics_html = ""  # 完全移除Sources统计信息
         
         # 生成無效轉化警告HTML
         invalid_warning_html = ""
@@ -1110,8 +1117,19 @@ class EmailSender:
         body = body.replace('{{total_records}}', f"{total_records:,}")
         body = body.replace('{{total_amount}}', total_amount)
         body = body.replace('{{main_file}}', main_file)
-        body = body.replace('{{sources_list}}', sources_list)
-        body = body.replace('{{sources_statistics}}', sources_statistics_html)
+        
+        # 处理Sources信息 - 如果为空则移除整个Sources行和统计部分
+        if sources_list and sources_statistics_html:
+            body = body.replace('{{sources_list}}', sources_list)
+            body = body.replace('{{sources_statistics}}', sources_statistics_html)
+        else:
+            # 移除Sources相关的HTML行
+            import re
+            # 移除Sources行
+            body = re.sub(r'<li><strong>Sources:</strong> {{sources_list}}</li>\s*', '', body)
+            # 移除Sources统计部分
+            body = re.sub(r'<div style="margin-top: 15px;">\s*{{sources_statistics}}\s*</div>\s*', '', body)
+        
         body = body.replace('{{feishu_section}}', feishu_section)
         body = body.replace('{{completion_time}}', completion_time)
         body = body.replace('{{invalid_warning}}', invalid_warning_html)
@@ -2256,8 +2274,15 @@ class EmailSender:
         }
 
     def _is_partner_email_enabled(self, partner_name: str) -> bool:
-        """檢查Partner郵件是否啟用（大小寫不敏感）"""
-        # 先嘗試直接匹配
+        """檢查Partner郵件是否啟用 - 支持别名映射"""
+        # 使用 config.get_partner_email_config 獲取最新配置（支持别名映射）
+        try:
+            email_config = config.get_partner_email_config(partner_name)
+            return email_config.get('enabled', False)
+        except Exception:
+            pass
+        
+        # 備用方案：嘗試直接匹配
         if partner_name in self.partner_email_enabled:
             return self.partner_email_enabled[partner_name]
         

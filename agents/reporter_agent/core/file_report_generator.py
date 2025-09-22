@@ -89,6 +89,110 @@ class FileReportGenerator:
         self.feishu_uploader = FeishuUploader()
         self.email_sender = EmailSender(global_email_disabled=global_email_disabled)
     
+    def _filter_partner_data(self, df: pd.DataFrame, target_partner: str) -> pd.DataFrame:
+        """
+        過濾Partner數據 - 支持反向映射邏輯
+        
+        根據config.py中的PARTNER_SOURCES_MAPPING配置，將Partner字段中的值
+        映射到對應的目標Partner，以支持RP->RAMPUP等映射關係
+        
+        Args:
+            df: 包含Partner字段的DataFrame
+            target_partner: 目標Partner名稱（如RAMPUP）
+            
+        Returns:
+            過濾後的DataFrame
+        """
+        try:
+            # 導入配置映射
+            import sys
+            import os
+            sys.path.append(os.path.join(os.path.dirname(__file__), '../../../..'))
+            from config import PARTNER_SOURCES_MAPPING, match_source_to_partner
+            
+            # 如果是ALL，返回所有數據
+            if target_partner.upper() == 'ALL':
+                return df.copy()
+            
+            # Partner别名映射（用于兼容性）
+            partner_aliases = {
+                'DeepLeaper': 'DL',
+                'DEEPLEAPER': 'DL',
+                'deepleaper': 'DL'
+            }
+            
+            # 如果target_partner有别名，使用别名
+            actual_target_partner = partner_aliases.get(target_partner, target_partner)
+            if actual_target_partner != target_partner:
+                logger.info(f"🔄 Partner别名映射: {target_partner} -> {actual_target_partner}")
+            
+            # 獲取actual_target_partner的配置
+            partner_config = PARTNER_SOURCES_MAPPING.get(actual_target_partner, {})
+            mapped_sources = partner_config.get('sources', [])
+            pattern = partner_config.get('pattern', '')
+            
+            logger.info(f"🔍 查找Partner '{target_partner}' 的數據...")
+            logger.info(f"   📋 配置的Sources: {mapped_sources}")
+            logger.info(f"   🔍 匹配Pattern: {pattern}")
+            
+            # 獲取DataFrame中所有唯一的Partner值
+            unique_partners = df['Partner'].dropna().unique()
+            logger.info(f"   📊 數據中的Partner值: {list(unique_partners)}")
+            
+            # 找到所有應該映射到actual_target_partner的Partner值
+            matching_partners = set()
+            
+            # 1. 直接匹配（忽略大小寫，同时支持原始名称和别名）
+            for partner_value in unique_partners:
+                if (str(partner_value).upper() == target_partner.upper() or 
+                    str(partner_value).upper() == actual_target_partner.upper()):
+                    matching_partners.add(partner_value)
+            
+            # 2. 通過sources列表匹配
+            for partner_value in unique_partners:
+                # 使用match_source_to_partner函數檢查映射
+                mapped_partner = match_source_to_partner(str(partner_value))
+                if mapped_partner == actual_target_partner:
+                    matching_partners.add(partner_value)
+            
+            # 3. 通過pattern匹配（如果配置了pattern）
+            if pattern:
+                import re
+                for partner_value in unique_partners:
+                    if re.match(pattern, str(partner_value), flags=re.IGNORECASE):
+                        mapped_partner = match_source_to_partner(str(partner_value))
+                        if mapped_partner == actual_target_partner:
+                            matching_partners.add(partner_value)
+            
+            # 4. 通過reverse_mapping匹配（新增支持）
+            reverse_mappings = partner_config.get('reverse_mapping', [])
+            if reverse_mappings:
+                logger.info(f"   🔄 檢查反向映射: {reverse_mappings}")
+                for partner_value in unique_partners:
+                    if str(partner_value) in reverse_mappings:
+                        matching_partners.add(partner_value)
+                        logger.info(f"   ✅ 反向映射匹配: {partner_value} -> {target_partner}")
+            
+            logger.info(f"   ✅ 找到匹配的Partner值: {list(matching_partners)}")
+            
+            if not matching_partners:
+                logger.warning(f"   ⚠️ 沒有找到匹配 '{target_partner}' (映射到 '{actual_target_partner}') 的Partner值")
+                return df[df['Partner'].isnull()].copy()  # 返回空DataFrame，但保持結構
+            
+            # 過濾數據
+            mask = df['Partner'].isin(matching_partners)
+            filtered_df = df[mask].copy()
+            
+            logger.info(f"   📊 過濾結果: {len(filtered_df)} 條記錄")
+            
+            return filtered_df
+            
+        except Exception as e:
+            logger.error(f"❌ Partner數據過濾失敗: {e}")
+            # 降級到簡單匹配
+            logger.info(f"🔄 降級到簡單匹配模式...")
+            return df[df['Partner'].str.upper() == target_partner.upper()].copy()
+    
     async def generate_report_from_file(self, df: pd.DataFrame, 
                                       partner_name: str,
                                       import_file_path: str,
@@ -198,7 +302,7 @@ class FileReportGenerator:
                     logger.error(f"❌ Local Sale Amount转换失败: {e}")
                     df['USD Sale Amount'] = 0.0
 
-            # 添加欄位名稱標準化映射
+            # 添加欄位名稱標準化映射 - 統一使用 STANDARD_REPORT_COLUMNS 格式
             column_mapping = {
                 'Conversion Date': 'Datetime Conversion',  # 舊格式兼容
                 'Datetime Conversion': 'Datetime Conversion',  # 🔧 確保統一欄位名稱不被改變
@@ -207,15 +311,28 @@ class FileReportGenerator:
                 'usd_sale_amount': 'USD Sale Amount',  # 🔧 添加usd_sale_amount到USD Sale Amount的映射
                 'Advertiser': 'Advertiser',  # 🔧 确保Advertiser字段保持不变
                 'Order ID': 'Order ID',  # 🔧 确保Order ID字段保持不变
-                'Publisher Sub ID 1': 'Aff Sub1',
-                'Publisher Sub ID 2': 'Aff Sub2', 
-                'Publisher Sub ID 3': 'Aff Sub3',
-                'Publisher Sub ID 4': 'Aff Sub4',
-                'Publisher Sub ID 5': 'Aff Sub5',
-                'Advertiser Sub ID 2': 'Adv Pub2',
-                'Advertiser Sub ID 3': 'Adv Pub3',
-                'Advertiser Sub ID 4': 'Adv Pub4', 
-                'Advertiser Sub ID 5': 'Adv Pub5'
+                # 🔧 修正：統一使用標準格式，不再簡化為 Aff Sub1/Adv Pub2 等
+                'Publisher Sub ID 1': 'Publisher Sub ID 1',
+                'Publisher Sub ID 2': 'Publisher Sub ID 2', 
+                'Publisher Sub ID 3': 'Publisher Sub ID 3',
+                'Publisher Sub ID 4': 'Publisher Sub ID 4',
+                'Publisher Sub ID 5': 'Publisher Sub ID 5',
+                'Advertiser Sub ID 1': 'Advertiser Sub ID 1',
+                'Advertiser Sub ID 2': 'Advertiser Sub ID 2',
+                'Advertiser Sub ID 3': 'Advertiser Sub ID 3',
+                'Advertiser Sub ID 4': 'Advertiser Sub ID 4', 
+                'Advertiser Sub ID 5': 'Advertiser Sub ID 5',
+                # 兼容舊格式的映射
+                'Aff Sub1': 'Publisher Sub ID 1',
+                'Aff Sub2': 'Publisher Sub ID 2',
+                'Aff Sub3': 'Publisher Sub ID 3',
+                'Aff Sub4': 'Publisher Sub ID 4',
+                'Aff Sub5': 'Publisher Sub ID 5',
+                'Adv Pub1': 'Advertiser Sub ID 1',
+                'Adv Pub2': 'Advertiser Sub ID 2',
+                'Adv Pub3': 'Advertiser Sub ID 3',
+                'Adv Pub4': 'Advertiser Sub ID 4',
+                'Adv Pub5': 'Advertiser Sub ID 5'
             }
             
             # 執行欄位重新命名
@@ -368,8 +485,8 @@ class FileReportGenerator:
         try:
             logger.info(f"🎯 生成 {partner_name} Partner報告...")
             
-            # 過濾該Partner的數據（忽略大小写）
-            partner_df = df[df['Partner'].str.upper() == partner_name.upper()].copy()
+            # 過濾該Partner的數據 - 支持映射邏輯
+            partner_df = self._filter_partner_data(df, partner_name)
             
             if partner_df.empty:
                 logger.warning(f"⚠️ 沒有找到 {partner_name} 的數據")
@@ -702,8 +819,9 @@ class FileReportGenerator:
             self._write_data_to_sheet(summary_ws, partner_df, current_row, header_font, 
                                     header_fill, header_alignment, data_alignment, number_alignment)
             
-            # 2. 按Source創建各個Sheet
-            if 'Source' in partner_df.columns:
+            # 2. 按Source創建各個Sheet - 根據配置決定是否生成
+            from config import should_show_individual_source_sheets
+            if should_show_individual_source_sheets() and 'Source' in partner_df.columns:
                 sources = partner_df['Source'].unique()
                 
                 for source in sources:
@@ -858,8 +976,9 @@ class FileReportGenerator:
             ws.cell(row=current_row, column=1, value=f"⚠️ Total Sale Amount (USD) (Invalid/Rejected/Cancelled): ${invalid_amount:,.2f}").font = Font(size=10, color="FF0000") # 紅色
             current_row += 1
         
-        # Sources信息 - 顯示所有 Sources，與郵件格式一致
-        if partner_summary.sources:
+        # Sources信息 - 根據配置決定是否顯示
+        from config import should_show_sources_info_in_report
+        if should_show_sources_info_in_report() and partner_summary.sources:
             sources_text = ", ".join(partner_summary.sources)  # 顯示所有 Sources
             ws.cell(row=current_row, column=1, value=f"Sources: {sources_text}").font = info_font
             current_row += 1
